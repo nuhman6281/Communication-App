@@ -1,0 +1,121 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: chatapp-postgres
+    environment:
+      POSTGRES_DB: chatapp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chatapp-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatapp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - chatapp-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: chatapp-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - chatapp-network
+
+  # Jitsi Meet (for video conferencing)
+  # Note: Full Jitsi setup requires multiple containers
+  # This is a simplified setup - for production, use official Jitsi Docker Compose
+  # Commented out for now - will be added when implementing Calls module
+  # jitsi-web:
+  #   image: jitsi/web:stable-8960
+  #   container_name: chatapp-jitsi
+  #   ports:
+  #     - "8000:80"
+  #     - "8443:443"
+  #   environment:
+  #     - ENABLE_AUTH=1
+  #     - ENABLE_GUESTS=1
+  #     - PUBLIC_URL=http://localhost:8000
+  #   volumes:
+  #     - jitsi_config:/config
+  #   networks:
+  #     - chatapp-network
+
+  # Backend (NestJS) - Uncomment when ready to run
+  # backend:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: chatapp-backend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     DATABASE_HOST: postgres
+  #     DATABASE_PORT: 5432
+  #     DATABASE_USER: postgres
+  #     DATABASE_PASSWORD: postgres123
+  #     DATABASE_NAME: chatapp
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     MINIO_ENDPOINT: minio
+  #     MINIO_PORT: 9000
+  #     NODE_ENV: development
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     minio:
+  #       condition: service_healthy
+  #   volumes:
+  #     - .:/app
+  #     - /app/node_modules
+  #   networks:
+  #     - chatapp-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  jitsi_config:
+    driver: local
+
+networks:
+  chatapp-network:
+    driver: bridge
