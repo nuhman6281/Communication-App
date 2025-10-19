@@ -10,6 +10,7 @@ import { AuthModule } from '@modules/auth/auth.module';
 import { UsersModule } from '@modules/users/users.module';
 import { ConversationsModule } from '@modules/conversations/conversations.module';
 import { MessagesModule } from '@modules/messages/messages.module';
+import { MediaModule } from '@modules/media/media.module';
 
 @Module({
   imports: [
@@ -58,10 +59,10 @@ import { MessagesModule } from '@modules/messages/messages.module';
     UsersModule,
     ConversationsModule,
     MessagesModule,
+    MediaModule,
     // GroupsModule,
     // ChannelsModule,
     // CallsModule,
-    // MediaModule,
     // WorkspacesModule,
     // NotificationsModule,
     // StoriesModule,
