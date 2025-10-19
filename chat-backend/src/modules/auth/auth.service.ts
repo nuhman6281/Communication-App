@@ -114,6 +114,10 @@ export class AuthService {
         throw new UnauthorizedException('MFA code required');
       }
 
+      if (!user.mfaSecret) {
+        throw new UnauthorizedException('MFA not properly configured');
+      }
+
       const isMfaValid = speakeasy.totp.verify({
         secret: user.mfaSecret,
         encoding: 'base32',
@@ -294,6 +298,10 @@ export class AuthService {
       length: 32,
     });
 
+    if (!secret.base32 || !secret.otpauth_url) {
+      throw new BadRequestException('Failed to generate MFA secret');
+    }
+
     // Save secret to user (not enabled yet)
     user.mfaSecret = secret.base32;
     await this.userRepository.save(user);
@@ -347,6 +355,10 @@ export class AuthService {
       throw new BadRequestException('MFA is not enabled');
     }
 
+    if (!user.mfaSecret) {
+      throw new BadRequestException('MFA not properly configured');
+    }
+
     // Verify code before disabling
     const isValid = speakeasy.totp.verify({
       secret: user.mfaSecret,
@@ -361,7 +373,7 @@ export class AuthService {
 
     // Disable MFA
     user.mfaEnabled = false;
-    user.mfaSecret = null;
+    user.mfaSecret = undefined;
     await this.userRepository.save(user);
 
     return { message: 'MFA disabled successfully' };

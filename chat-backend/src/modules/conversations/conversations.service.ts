@@ -6,7 +6,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, IsNull } from 'typeorm';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationParticipant } from './entities/conversation-participant.entity';
 import { User } from '@modules/users/entities/user.entity';
@@ -302,7 +302,7 @@ export class ConversationsService {
       where: {
         conversationId,
         userId: In(userIds),
-        leftAt: null,
+        leftAt: IsNull(),
       },
     });
 
@@ -343,7 +343,7 @@ export class ConversationsService {
     ]);
 
     const participant = await this.participantRepository.findOne({
-      where: { conversationId, userId: participantUserId, leftAt: null },
+      where: { conversationId, userId: participantUserId, leftAt: IsNull() },
     });
 
     if (!participant) {
@@ -371,7 +371,7 @@ export class ConversationsService {
     updateParticipantDto: UpdateParticipantDto,
   ) {
     const participant = await this.participantRepository.findOne({
-      where: { conversationId, userId, leftAt: null },
+      where: { conversationId, userId, leftAt: IsNull() },
     });
 
     if (!participant) {
@@ -390,7 +390,7 @@ export class ConversationsService {
    */
   async leaveConversation(userId: string, conversationId: string) {
     const participant = await this.participantRepository.findOne({
-      where: { conversationId, userId, leftAt: null },
+      where: { conversationId, userId, leftAt: IsNull() },
     });
 
     if (!participant) {
@@ -401,6 +401,10 @@ export class ConversationsService {
       where: { id: conversationId },
     });
 
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
     // Cannot leave direct conversations
     if (conversation.type === ConversationType.DIRECT) {
       throw new BadRequestException('Cannot leave direct conversations');
@@ -409,7 +413,7 @@ export class ConversationsService {
     // If owner, transfer ownership or delete conversation
     if (participant.role === UserRole.OWNER) {
       const otherParticipants = await this.participantRepository.find({
-        where: { conversationId, leftAt: null },
+        where: { conversationId, leftAt: IsNull() },
         order: { role: 'ASC', joinedAt: 'ASC' },
       });
 
@@ -457,7 +461,7 @@ export class ConversationsService {
    */
   async markAsRead(userId: string, conversationId: string, messageId: string) {
     const participant = await this.participantRepository.findOne({
-      where: { conversationId, userId, leftAt: null },
+      where: { conversationId, userId, leftAt: IsNull() },
     });
 
     if (!participant) {
@@ -555,7 +559,7 @@ export class ConversationsService {
     allowedRoles: UserRole[],
   ) {
     const participant = await this.participantRepository.findOne({
-      where: { conversationId, userId, leftAt: null },
+      where: { conversationId, userId, leftAt: IsNull() },
     });
 
     if (!participant) {

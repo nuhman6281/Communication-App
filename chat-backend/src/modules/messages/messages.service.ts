@@ -1,0 +1,385 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThan, IsNull } from 'typeorm';
+import { Message } from './entities/message.entity';
+import { MessageReaction } from './entities/message-reaction.entity';
+import { MessageRead } from './entities/message-read.entity';
+import { Conversation } from '@modules/conversations/entities/conversation.entity';
+import { ConversationParticipant } from '@modules/conversations/entities/conversation-participant.entity';
+import { CreateMessageDto } from './dto/create-message.dto';
+import { UpdateMessageDto } from './dto/update-message.dto';
+import { GetMessagesDto } from './dto/get-messages.dto';
+import { MessageReactionDto } from './dto/message-reaction.dto';
+
+@Injectable()
+export class MessagesService {
+  constructor(
+    @InjectRepository(Message)
+    private readonly messageRepository: Repository<Message>,
+    @InjectRepository(MessageReaction)
+    private readonly reactionRepository: Repository<MessageReaction>,
+    @InjectRepository(MessageRead)
+    private readonly readRepository: Repository<MessageRead>,
+    @InjectRepository(Conversation)
+    private readonly conversationRepository: Repository<Conversation>,
+    @InjectRepository(ConversationParticipant)
+    private readonly participantRepository: Repository<ConversationParticipant>,
+  ) {}
+
+  /**
+   * Send a message
+   */
+  async sendMessage(userId: string, createMessageDto: CreateMessageDto) {
+    const { conversationId, content, messageType, replyToId, metadata } =
+      createMessageDto;
+
+    // Verify user is participant in conversation
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId, userId, leftAt: IsNull() },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException(
+        'You are not a participant in this conversation',
+      );
+    }
+
+    // Verify replyTo message exists if provided
+    if (replyToId) {
+      const replyToMessage = await this.messageRepository.findOne({
+        where: { id: replyToId, conversationId },
+      });
+
+      if (!replyToMessage) {
+        throw new NotFoundException('Reply-to message not found');
+      }
+    }
+
+    // Create message
+    const message = this.messageRepository.create({
+      conversationId,
+      senderId: userId,
+      content,
+      messageType,
+      replyToId,
+      metadata,
+    });
+
+    await this.messageRepository.save(message);
+
+    // Update conversation last message
+    await this.conversationRepository.update(conversationId, {
+      lastMessageId: message.id,
+      lastMessageAt: message.createdAt,
+    });
+
+    // Load message with sender info
+    return this.messageRepository.findOne({
+      where: { id: message.id },
+      relations: ['sender', 'replyTo'],
+    });
+  }
+
+  /**
+   * Get messages in a conversation (paginated)
+   */
+  async getMessages(userId: string, getMessagesDto: GetMessagesDto) {
+    const { conversationId, page = 1, limit = 50, beforeMessageId } =
+      getMessagesDto;
+
+    // Verify user is participant
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId, userId },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException(
+        'You are not a participant in this conversation',
+      );
+    }
+
+    const queryBuilder = this.messageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.replyTo', 'replyTo')
+      .leftJoinAndSelect('replyTo.sender', 'replyToSender')
+      .where('message.conversationId = :conversationId', { conversationId })
+      .andWhere('message.isDeleted = :isDeleted', { isDeleted: false });
+
+    // Pagination: load messages before a specific message
+    if (beforeMessageId) {
+      const beforeMessage = await this.messageRepository.findOne({
+        where: { id: beforeMessageId },
+      });
+
+      if (beforeMessage) {
+        queryBuilder.andWhere('message.createdAt < :beforeTime', {
+          beforeTime: beforeMessage.createdAt,
+        });
+      }
+    }
+
+    queryBuilder
+      .orderBy('message.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [messages, total] = await queryBuilder.getManyAndCount();
+
+    // Load reactions for each message
+    const messageIds = messages.map((m) => m.id);
+    const reactions = await this.reactionRepository.find({
+      where: { messageId: LessThan(messageIds.length) ? undefined : undefined },
+      relations: ['user'],
+    });
+
+    // Attach reactions to messages
+    const messagesWithReactions = messages.map((message) => ({
+      ...message,
+      reactions: reactions.filter((r) => r.messageId === message.id),
+    }));
+
+    return {
+      messages: messagesWithReactions.reverse(), // Return in chronological order
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Get a single message by ID
+   */
+  async getMessageById(userId: string, messageId: string) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+      relations: ['sender', 'replyTo'],
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Verify user is participant
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId: message.conversationId, userId },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return message;
+  }
+
+  /**
+   * Edit message (sender only)
+   */
+  async editMessage(
+    userId: string,
+    messageId: string,
+    updateMessageDto: UpdateMessageDto,
+  ) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.senderId !== userId) {
+      throw new ForbiddenException('Only the sender can edit this message');
+    }
+
+    if (message.isDeleted) {
+      throw new BadRequestException('Cannot edit a deleted message');
+    }
+
+    message.content = updateMessageDto.content;
+    message.isEdited = true;
+
+    await this.messageRepository.save(message);
+
+    return this.messageRepository.findOne({
+      where: { id: messageId },
+      relations: ['sender', 'replyTo'],
+    });
+  }
+
+  /**
+   * Delete message (sender only)
+   */
+  async deleteMessage(userId: string, messageId: string) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.senderId !== userId) {
+      throw new ForbiddenException('Only the sender can delete this message');
+    }
+
+    // Soft delete
+    message.isDeleted = true;
+    message.content = undefined; // Remove content for privacy
+
+    await this.messageRepository.save(message);
+
+    return { message: 'Message deleted successfully' };
+  }
+
+  /**
+   * Add reaction to message
+   */
+  async addReaction(
+    userId: string,
+    messageId: string,
+    reactionDto: MessageReactionDto,
+  ) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Verify user is participant
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId: message.conversationId, userId },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    // Check if reaction already exists
+    const existingReaction = await this.reactionRepository.findOne({
+      where: {
+        messageId,
+        userId,
+        emoji: reactionDto.emoji,
+      },
+    });
+
+    if (existingReaction) {
+      return existingReaction; // Already reacted with this emoji
+    }
+
+    // Create reaction
+    const reaction = this.reactionRepository.create({
+      messageId,
+      userId,
+      emoji: reactionDto.emoji,
+    });
+
+    await this.reactionRepository.save(reaction);
+
+    return this.reactionRepository.findOne({
+      where: { id: reaction.id },
+      relations: ['user'],
+    });
+  }
+
+  /**
+   * Remove reaction from message
+   */
+  async removeReaction(userId: string, messageId: string, emoji: string) {
+    const reaction = await this.reactionRepository.findOne({
+      where: { messageId, userId, emoji },
+    });
+
+    if (!reaction) {
+      throw new NotFoundException('Reaction not found');
+    }
+
+    await this.reactionRepository.remove(reaction);
+
+    return { message: 'Reaction removed successfully' };
+  }
+
+  /**
+   * Mark message as read
+   */
+  async markAsRead(userId: string, messageId: string) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Don't mark own messages as read
+    if (message.senderId === userId) {
+      return { message: 'Own message, no read receipt created' };
+    }
+
+    // Check if already marked as read
+    const existingRead = await this.readRepository.findOne({
+      where: { messageId, userId },
+    });
+
+    if (existingRead) {
+      return existingRead;
+    }
+
+    // Create read receipt
+    const read = this.readRepository.create({
+      messageId,
+      userId,
+      conversationId: message.conversationId,
+      readAt: new Date(),
+    });
+
+    await this.readRepository.save(read);
+
+    return read;
+  }
+
+  /**
+   * Get read receipts for a message
+   */
+  async getReadReceipts(userId: string, messageId: string) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Verify user is participant
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId: message.conversationId, userId },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const reads = await this.readRepository.find({
+      where: { messageId },
+      relations: ['user'],
+      order: { readAt: 'DESC' },
+    });
+
+    return {
+      messageId,
+      readCount: reads.length,
+      reads,
+    };
+  }
+}

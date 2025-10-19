@@ -3,12 +3,13 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
 import { BullModule } from '@nestjs/bull';
-import * as redisStore from 'cache-manager-redis-store';
+import redisStore from 'cache-manager-redis-store';
 import { DatabaseModule } from '@database/database.module';
 import { configuration } from '@config/configuration';
 import { AuthModule } from '@modules/auth/auth.module';
 import { UsersModule } from '@modules/users/users.module';
 import { ConversationsModule } from '@modules/conversations/conversations.module';
+import { MessagesModule } from '@modules/messages/messages.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ConversationsModule } from '@modules/conversations/conversations.module
     // Caching
     CacheModule.register({
       isGlobal: true,
+      // @ts-ignore - cache-manager-redis-store type compatibility
       store: redisStore,
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379', 10),
@@ -55,7 +57,7 @@ import { ConversationsModule } from '@modules/conversations/conversations.module
     AuthModule,
     UsersModule,
     ConversationsModule,
-    // MessagesModule,
+    MessagesModule,
     // GroupsModule,
     // ChannelsModule,
     // CallsModule,

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({
@@ -20,6 +20,7 @@ export class LoginDto {
     description: 'MFA code (required if MFA is enabled)',
     required: false,
   })
+  @IsOptional()
   @IsString()
   mfaCode?: string;
 }
