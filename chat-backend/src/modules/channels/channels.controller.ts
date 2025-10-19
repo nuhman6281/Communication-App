@@ -8,7 +8,6 @@ import {
   Param,
   Query,
   UseGuards,
-  Request,
   ParseUUIDPipe,
   ParseIntPipe,
   DefaultValuePipe,
@@ -30,6 +29,8 @@ import {
   ChannelSubscriberRole,
   ChannelSubscriberStatus,
 } from './entities/channel-subscriber.entity';
+import { CurrentUser } from '@common/decorators/current-user.decorator';
+import { User } from '@modules/users/entities/user.entity';
 
 @ApiTags('Channels')
 @ApiBearerAuth()
@@ -44,8 +45,8 @@ export class ChannelsController {
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 409, description: 'Handle already exists' })
-  async create(@Request() req, @Body() createChannelDto: CreateChannelDto) {
-    return this.channelsService.createChannel(req.user.sub, createChannelDto);
+  async create(@CurrentUser() user: User, @Body() createChannelDto: CreateChannelDto) {
+    return this.channelsService.createChannel(user.id, createChannelDto);
   }
 
   @Get()
@@ -70,11 +71,11 @@ export class ChannelsController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Channels retrieved successfully' })
   async findMyChannels(
-    @Request() req,
+    @CurrentUser() user: User,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    return this.channelsService.findUserChannels(req.user.sub, page, limit);
+    return this.channelsService.findUserChannels(user.id, page, limit);
   }
 
   @Get('search')
@@ -96,8 +97,8 @@ export class ChannelsController {
   @ApiParam({ name: 'handle', type: String, description: 'Channel handle' })
   @ApiResponse({ status: 200, description: 'Channel retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Channel not found' })
-  async findByHandle(@Request() req, @Param('handle') handle: string) {
-    return this.channelsService.findByHandle(handle, req.user.sub);
+  async findByHandle(@CurrentUser() user: User, @Param('handle') handle: string) {
+    return this.channelsService.findByHandle(handle, user.id);
   }
 
   @Get(':id')
@@ -105,8 +106,8 @@ export class ChannelsController {
   @ApiParam({ name: 'id', type: String, description: 'Channel ID' })
   @ApiResponse({ status: 200, description: 'Channel retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Channel not found' })
-  async findOne(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
-    return this.channelsService.findOne(id, req.user.sub);
+  async findOne(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.channelsService.findOne(id, user.id);
   }
 
   @Put(':id')
@@ -116,11 +117,11 @@ export class ChannelsController {
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Channel not found' })
   async update(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateChannelDto: UpdateChannelDto,
   ) {
-    return this.channelsService.update(id, req.user.sub, updateChannelDto);
+    return this.channelsService.update(id, user.id, updateChannelDto);
   }
 
   @Delete(':id')
@@ -129,8 +130,8 @@ export class ChannelsController {
   @ApiResponse({ status: 200, description: 'Channel deleted successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Channel not found' })
-  async delete(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
-    await this.channelsService.delete(id, req.user.sub);
+  async delete(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    await this.channelsService.delete(id, user.id);
     return { message: 'Channel deleted successfully' };
   }
 
@@ -140,8 +141,8 @@ export class ChannelsController {
   @ApiResponse({ status: 201, description: 'Subscribed successfully' })
   @ApiResponse({ status: 400, description: 'Already subscribed' })
   @ApiResponse({ status: 403, description: 'Blocked from channel' })
-  async subscribe(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
-    return this.channelsService.subscribe(id, req.user.sub);
+  async subscribe(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.channelsService.subscribe(id, user.id);
   }
 
   @Delete(':id/subscribe')
@@ -149,8 +150,8 @@ export class ChannelsController {
   @ApiParam({ name: 'id', type: String, description: 'Channel ID' })
   @ApiResponse({ status: 200, description: 'Unsubscribed successfully' })
   @ApiResponse({ status: 404, description: 'Not subscribed' })
-  async unsubscribe(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
-    await this.channelsService.unsubscribe(id, req.user.sub);
+  async unsubscribe(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    await this.channelsService.unsubscribe(id, user.id);
     return { message: 'Unsubscribed successfully' };
   }
 
@@ -160,11 +161,11 @@ export class ChannelsController {
   @ApiQuery({ name: 'status', required: false, enum: ChannelSubscriberStatus })
   @ApiResponse({ status: 200, description: 'Subscribers retrieved successfully' })
   async getSubscribers(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Query('status') status?: ChannelSubscriberStatus,
   ) {
-    return this.channelsService.getSubscribers(id, req.user.sub, status);
+    return this.channelsService.getSubscribers(id, user.id, status);
   }
 
   @Put(':id/subscribers/:userId/role')
@@ -174,14 +175,14 @@ export class ChannelsController {
   @ApiResponse({ status: 200, description: 'Role updated successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async updateSubscriberRole(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body('role') role: ChannelSubscriberRole,
   ) {
     return this.channelsService.updateSubscriberRole(
       id,
-      req.user.sub,
+      user.id,
       userId,
       role,
     );
@@ -196,11 +197,11 @@ export class ChannelsController {
   })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async transferOwnership(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Body('newOwnerId') newOwnerId: string,
   ) {
-    await this.channelsService.transferOwnership(id, req.user.sub, newOwnerId);
+    await this.channelsService.transferOwnership(id, user.id, newOwnerId);
     return { message: 'Ownership transferred successfully' };
   }
 
@@ -211,14 +212,14 @@ export class ChannelsController {
   @ApiResponse({ status: 200, description: 'Subscriber blocked successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async blockSubscriber(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body('reason') reason?: string,
   ) {
     return this.channelsService.blockSubscriber(
       id,
-      req.user.sub,
+      user.id,
       userId,
       reason,
     );
@@ -234,10 +235,10 @@ export class ChannelsController {
   })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async unblockSubscriber(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    return this.channelsService.unblockSubscriber(id, req.user.sub, userId);
+    return this.channelsService.unblockSubscriber(id, user.id, userId);
   }
 }

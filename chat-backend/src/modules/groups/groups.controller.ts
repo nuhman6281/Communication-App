@@ -8,7 +8,6 @@ import {
   Param,
   Query,
   UseGuards,
-  Request,
   ParseUUIDPipe,
   ParseIntPipe,
   DefaultValuePipe,
@@ -28,6 +27,8 @@ import { AddMemberDto } from './dto/add-member.dto';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { GroupType } from './entities/group.entity';
 import { GroupMemberRole, GroupMemberStatus } from './entities/group-member.entity';
+import { CurrentUser } from '@common/decorators/current-user.decorator';
+import { User } from '@modules/users/entities/user.entity';
 
 @ApiTags('Groups')
 @ApiBearerAuth()
@@ -41,8 +42,8 @@ export class GroupsController {
   @ApiResponse({ status: 201, description: 'Group created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async create(@Request() req, @Body() createGroupDto: CreateGroupDto) {
-    return this.groupsService.createGroup(req.user.sub, createGroupDto);
+  async create(@CurrentUser() user: User, @Body() createGroupDto: CreateGroupDto) {
+    return this.groupsService.createGroup(user.id, createGroupDto);
   }
 
   @Get()
@@ -52,12 +53,12 @@ export class GroupsController {
   @ApiQuery({ name: 'type', required: false, enum: GroupType })
   @ApiResponse({ status: 200, description: 'Groups retrieved successfully' })
   async findAll(
-    @Request() req,
+    @CurrentUser() user: User,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('type') type?: GroupType,
   ) {
-    return this.groupsService.findAll(req.user.sub, page, limit, type);
+    return this.groupsService.findAll(user.id, page, limit, type);
   }
 
   @Get('search')
@@ -67,12 +68,12 @@ export class GroupsController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Search results retrieved' })
   async search(
-    @Request() req,
+    @CurrentUser() user: User,
     @Query('q') query: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    return this.groupsService.searchGroups(query, req.user.sub, page, limit);
+    return this.groupsService.searchGroups(query, user.id, page, limit);
   }
 
   @Get(':id')
@@ -80,8 +81,8 @@ export class GroupsController {
   @ApiParam({ name: 'id', type: String, description: 'Group ID' })
   @ApiResponse({ status: 200, description: 'Group retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Group not found' })
-  async findOne(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
-    return this.groupsService.findOne(id, req.user.sub);
+  async findOne(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.groupsService.findOne(id, user.id);
   }
 
   @Put(':id')
@@ -91,11 +92,11 @@ export class GroupsController {
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Group not found' })
   async update(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateGroupDto: UpdateGroupDto,
   ) {
-    return this.groupsService.update(id, req.user.sub, updateGroupDto);
+    return this.groupsService.update(id, user.id, updateGroupDto);
   }
 
   @Delete(':id')
@@ -104,8 +105,8 @@ export class GroupsController {
   @ApiResponse({ status: 200, description: 'Group deleted successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Group not found' })
-  async delete(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
-    await this.groupsService.delete(id, req.user.sub);
+  async delete(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    await this.groupsService.delete(id, user.id);
     return { message: 'Group deleted successfully' };
   }
 
@@ -115,8 +116,8 @@ export class GroupsController {
   @ApiResponse({ status: 200, description: 'Left group successfully' })
   @ApiResponse({ status: 400, description: 'Owner cannot leave' })
   @ApiResponse({ status: 404, description: 'Group not found' })
-  async leave(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
-    await this.groupsService.leaveGroup(id, req.user.sub);
+  async leave(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    await this.groupsService.leaveGroup(id, user.id);
     return { message: 'Left group successfully' };
   }
 
@@ -126,11 +127,11 @@ export class GroupsController {
   @ApiQuery({ name: 'status', required: false, enum: GroupMemberStatus })
   @ApiResponse({ status: 200, description: 'Members retrieved successfully' })
   async getMembers(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Query('status') status?: GroupMemberStatus,
   ) {
-    return this.groupsService.getMembers(id, req.user.sub, status);
+    return this.groupsService.getMembers(id, user.id, status);
   }
 
   @Post(':id/members')
@@ -140,11 +141,11 @@ export class GroupsController {
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async addMember(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() addMemberDto: AddMemberDto,
   ) {
-    return this.groupsService.addMember(id, req.user.sub, addMemberDto);
+    return this.groupsService.addMember(id, user.id, addMemberDto);
   }
 
   @Delete(':id/members/:userId')
@@ -154,11 +155,11 @@ export class GroupsController {
   @ApiResponse({ status: 200, description: 'Member removed successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async removeMember(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    await this.groupsService.removeMember(id, req.user.sub, userId);
+    await this.groupsService.removeMember(id, user.id, userId);
     return { message: 'Member removed successfully' };
   }
 
@@ -169,12 +170,12 @@ export class GroupsController {
   @ApiResponse({ status: 200, description: 'Role updated successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async updateMemberRole(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body('role') role: GroupMemberRole,
   ) {
-    return this.groupsService.updateMemberRole(id, req.user.sub, userId, role);
+    return this.groupsService.updateMemberRole(id, user.id, userId, role);
   }
 
   @Put(':id/members/:userId/permissions')
@@ -184,14 +185,14 @@ export class GroupsController {
   @ApiResponse({ status: 200, description: 'Permissions updated successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async updateMemberPermissions(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body('permissions') permissions: Record<string, any>,
   ) {
     return this.groupsService.updateMemberPermissions(
       id,
-      req.user.sub,
+      user.id,
       userId,
       permissions,
     );
@@ -203,11 +204,11 @@ export class GroupsController {
   @ApiResponse({ status: 200, description: 'Ownership transferred successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async transferOwnership(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Body('newOwnerId') newOwnerId: string,
   ) {
-    await this.groupsService.transferOwnership(id, req.user.sub, newOwnerId);
+    await this.groupsService.transferOwnership(id, user.id, newOwnerId);
     return { message: 'Ownership transferred successfully' };
   }
 
@@ -218,12 +219,12 @@ export class GroupsController {
   @ApiResponse({ status: 200, description: 'Member banned successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async banMember(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body('reason') reason?: string,
   ) {
-    return this.groupsService.banMember(id, req.user.sub, userId, reason);
+    return this.groupsService.banMember(id, user.id, userId, reason);
   }
 
   @Post(':id/members/:userId/unban')
@@ -233,11 +234,11 @@ export class GroupsController {
   @ApiResponse({ status: 200, description: 'Member unbanned successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async unbanMember(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    return this.groupsService.unbanMember(id, req.user.sub, userId);
+    return this.groupsService.unbanMember(id, user.id, userId);
   }
 
   @Put(':id/settings')
@@ -246,10 +247,10 @@ export class GroupsController {
   @ApiResponse({ status: 200, description: 'Settings updated successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async updateSettings(
-    @Request() req,
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Body('settings') settings: Record<string, any>,
   ) {
-    return this.groupsService.updateGroupSettings(id, req.user.sub, settings);
+    return this.groupsService.updateGroupSettings(id, user.id, settings);
   }
 }

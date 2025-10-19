@@ -5,6 +5,7 @@ import {
   OneToMany,
   JoinColumn,
   Index,
+  RelationId,
 } from 'typeorm';
 import { BaseEntity } from '@common/entities/base.entity';
 import { User } from '@modules/users/entities/user.entity';
@@ -54,9 +55,10 @@ export class Channel extends BaseEntity {
   @Column({ type: 'uuid', nullable: false })
   ownerId: string;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: false })
-  @JoinColumn({ name: 'ownerId' })
-  owner: User;
+  // Temporarily removed to fix insert issue - will add back after testing
+  // @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: false })
+  // @JoinColumn({ name: 'ownerId' })
+  // owner: User;
 
   @Column({ type: 'uuid', nullable: true })
   conversationId: string | null;

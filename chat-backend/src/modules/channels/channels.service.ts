@@ -16,6 +16,7 @@ import {
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 import { ConversationsService } from '@modules/conversations/conversations.service';
+import { ConversationType } from '@common/constants';
 
 @Injectable()
 export class ChannelsService {
@@ -45,34 +46,43 @@ export class ChannelsService {
       userId,
       {
         name: createChannelDto.name,
-        type: 'channel',
+        type: ConversationType.CHANNEL,
         participantIds: [],
       },
     );
 
-    // Create the channel using .create() and .save() instead of .insert()
-    const channel = this.channelRepository.create({
-      name: createChannelDto.name,
-      handle: createChannelDto.handle.toLowerCase(),
-      description: createChannelDto.description || null,
-      type: createChannelDto.type || ChannelType.PUBLIC,
-      category: createChannelDto.category || ChannelCategory.OTHER,
-      ownerId: userId,
-      conversationId: conversation.id,
-      avatarUrl: createChannelDto.avatarUrl || null,
-      bannerUrl: createChannelDto.bannerUrl || null,
-      tags: createChannelDto.tags || [],
-      settings: createChannelDto.settings || {
-        allowComments: true,
-        allowReactions: true,
-        allowSharing: true,
-        notifySubscribers: true,
-        requireApproval: createChannelDto.type === ChannelType.PRIVATE,
-      },
-      subscriberCount: 1,
-    });
+    // Use raw query to completely bypass TypeORM metadata
+    const settings = createChannelDto.settings || {
+      allowComments: true,
+      allowReactions: true,
+      allowSharing: true,
+      notifySubscribers: true,
+      requireApproval: createChannelDto.type === ChannelType.PRIVATE,
+    };
 
-    const savedChannel = await this.channelRepository.save(channel);
+    const result = await this.channelRepository.query(
+      `INSERT INTO channels
+        (name, handle, description, "avatarUrl", "bannerUrl", type, category, "ownerId", "conversationId", "subscriberCount", settings, tags)
+       VALUES
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING *`,
+      [
+        createChannelDto.name,
+        createChannelDto.handle.toLowerCase(),
+        createChannelDto.description || null,
+        createChannelDto.avatarUrl || null,
+        createChannelDto.bannerUrl || null,
+        createChannelDto.type || ChannelType.PUBLIC,
+        createChannelDto.category || ChannelCategory.OTHER,
+        userId,
+        conversation.id,
+        1,
+        JSON.stringify(settings),
+        createChannelDto.tags || [],
+      ],
+    );
+
+    const savedChannel = result[0] as Channel;
 
     // Add creator as owner
     await this.subscriberRepository.save({

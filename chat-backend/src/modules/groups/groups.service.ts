@@ -16,6 +16,7 @@ import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { AddMemberDto } from './dto/add-member.dto';
 import { ConversationsService } from '@modules/conversations/conversations.service';
+import { ConversationType } from '@common/constants';
 
 @Injectable()
 export class GroupsService {
@@ -42,7 +43,7 @@ export class GroupsService {
       userId,
       {
         name: createGroupDto.name,
-        type: 'group',
+        type: ConversationType.GROUP,
         participantIds: initialParticipants, // Initial members besides creator
       },
     );
@@ -153,7 +154,7 @@ export class GroupsService {
     if (
       member.role !== GroupMemberRole.OWNER &&
       member.role !== GroupMemberRole.ADMIN &&
-      (!member.permissions?.canEditGroup || member.permissions.canEditGroup === false)
+      !member.permissions?.canEditGroup
     ) {
       throw new ForbiddenException('You do not have permission to edit this group');
     }
@@ -204,7 +205,7 @@ export class GroupsService {
     if (
       inviter.role !== GroupMemberRole.OWNER &&
       inviter.role !== GroupMemberRole.ADMIN &&
-      (!inviter.permissions?.canInviteMembers || inviter.permissions.canInviteMembers === false)
+      !inviter.permissions?.canInviteMembers
     ) {
       throw new ForbiddenException('You do not have permission to add members');
     }
@@ -243,7 +244,7 @@ export class GroupsService {
     await this.conversationsService.addParticipants(
       inviterId,
       group.conversationId,
-      [addMemberDto.userId],
+      { userIds: [addMemberDto.userId] },
     );
 
     // Create membership
@@ -295,7 +296,7 @@ export class GroupsService {
     if (
       remover.role !== GroupMemberRole.OWNER &&
       remover.role !== GroupMemberRole.ADMIN &&
-      (!remover.permissions?.canRemoveMembers || remover.permissions.canRemoveMembers === false)
+      !remover.permissions?.canRemoveMembers
     ) {
       throw new ForbiddenException('You do not have permission to remove members');
     }
@@ -467,18 +468,22 @@ export class GroupsService {
       throw new ForbiddenException('Admins cannot ban other admins');
     }
 
+    // Decrement member count if was active before ban
+    const wasActive = member.status === GroupMemberStatus.ACTIVE;
+
     // Update member status
     member.status = GroupMemberStatus.BANNED;
     member.bannedAt = new Date();
     member.bannedById = bannerId;
     member.banReason = reason || null;
 
-    // Decrement member count if was active
-    if (member.status === GroupMemberStatus.ACTIVE) {
+    const savedMember = await this.groupMemberRepository.save(member);
+
+    if (wasActive) {
       await this.decrementMemberCount(groupId);
     }
 
-    return this.groupMemberRepository.save(member);
+    return savedMember;
   }
 
   async unbanMember(

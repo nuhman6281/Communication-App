@@ -14,6 +14,12 @@ import { MediaModule } from '@modules/media/media.module';
 import { PresenceModule } from '@modules/presence/presence.module';
 import { GroupsModule } from '@modules/groups/groups.module';
 import { ChannelsModule } from '@modules/channels/channels.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { StoriesModule } from './modules/stories/stories.module';
+import { SearchModule } from './modules/search/search.module';
+import { CallsModule } from './modules/calls/calls.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -66,6 +72,12 @@ import { ChannelsModule } from '@modules/channels/channels.module';
     PresenceModule,
     GroupsModule,
     ChannelsModule,
+    NotificationsModule,
+    StoriesModule,
+    SearchModule,
+    CallsModule,
+    WebhooksModule,
+    AiModule,
     // CallsModule,
     // WorkspacesModule,
     // NotificationsModule,

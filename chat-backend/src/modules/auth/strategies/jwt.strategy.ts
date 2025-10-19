@@ -41,7 +41,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Account has been deleted');
     }
 
-    // Return user object (will be attached to request.user)
-    return user;
+    // Return payload (will be attached to request.user)
+    // This allows controllers to access req.user.sub for the user ID
+    return payload;
   }
 }
