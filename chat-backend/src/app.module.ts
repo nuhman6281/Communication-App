@@ -11,6 +11,9 @@ import { UsersModule } from '@modules/users/users.module';
 import { ConversationsModule } from '@modules/conversations/conversations.module';
 import { MessagesModule } from '@modules/messages/messages.module';
 import { MediaModule } from '@modules/media/media.module';
+import { PresenceModule } from '@modules/presence/presence.module';
+import { GroupsModule } from '@modules/groups/groups.module';
+import { ChannelsModule } from '@modules/channels/channels.module';
 
 @Module({
   imports: [
@@ -60,13 +63,13 @@ import { MediaModule } from '@modules/media/media.module';
     ConversationsModule,
     MessagesModule,
     MediaModule,
-    // GroupsModule,
-    // ChannelsModule,
+    PresenceModule,
+    GroupsModule,
+    ChannelsModule,
     // CallsModule,
     // WorkspacesModule,
     // NotificationsModule,
     // StoriesModule,
-    // PresenceModule,
     // SearchModule,
     // WebhooksModule,
     // AIModule,

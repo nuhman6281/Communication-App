@@ -40,17 +40,20 @@ export class ConversationsService {
   ) {
     const { type, participantIds, name, description, avatarUrl } = createConversationDto;
 
-    // Validate participants exist
-    const participants = await this.userRepository.find({
-      where: { id: In([userId, ...participantIds]) },
-    });
+    // For channel type, skip participant validation (handled by ChannelsService)
+    if (type !== ConversationType.CHANNEL) {
+      // Validate participants exist
+      const participants = await this.userRepository.find({
+        where: { id: In([userId, ...participantIds]), deletedAt: IsNull() },
+      });
 
-    if (participants.length !== participantIds.length + 1) {
-      throw new BadRequestException('One or more participants not found');
+      if (participants.length !== participantIds.length + 1) {
+        throw new BadRequestException('One or more participants not found');
+      }
+
+      // Check for blocked users
+      await this.validateNoBlockedUsers(userId, participantIds);
     }
-
-    // Check for blocked users
-    await this.validateNoBlockedUsers(userId, participantIds);
 
     // For direct conversations, check if one already exists
     if (type === ConversationType.DIRECT) {
@@ -88,28 +91,36 @@ export class ConversationsService {
 
     await this.conversationRepository.save(conversation);
 
-    // Add creator as participant with owner/admin role
-    const creatorParticipant = this.participantRepository.create({
-      conversationId: conversation.id,
-      userId,
-      role: type === ConversationType.DIRECT ? UserRole.MEMBER : UserRole.OWNER,
-    });
-
-    await this.participantRepository.save(creatorParticipant);
-
-    // Add other participants
-    const otherParticipants = participantIds.map((participantId) =>
-      this.participantRepository.create({
+    // For channels, participants are managed by ChannelsService using ChannelSubscriber
+    if (type !== ConversationType.CHANNEL) {
+      // Add creator as participant with owner/admin role
+      const creatorParticipant = this.participantRepository.create({
         conversationId: conversation.id,
-        userId: participantId,
-        role: UserRole.MEMBER,
-        invitedById: userId,
-      }),
-    );
+        userId,
+        role: type === ConversationType.DIRECT ? UserRole.MEMBER : UserRole.OWNER,
+      });
 
-    await this.participantRepository.save(otherParticipants);
+      await this.participantRepository.save(creatorParticipant);
 
-    // Load full conversation with participants
+      // Add other participants
+      const otherParticipants = participantIds.map((participantId) =>
+        this.participantRepository.create({
+          conversationId: conversation.id,
+          userId: participantId,
+          role: UserRole.MEMBER,
+          invitedById: userId,
+        }),
+      );
+
+      await this.participantRepository.save(otherParticipants);
+    }
+
+    // For channels, return conversation directly (participants managed by ChannelsService)
+    if (type === ConversationType.CHANNEL) {
+      return conversation;
+    }
+
+    // Load full conversation with participants for non-channel conversations
     return this.getConversationById(userId, conversation.id);
   }
 
