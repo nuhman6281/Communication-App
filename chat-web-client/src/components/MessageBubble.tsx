@@ -3,6 +3,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -67,6 +73,7 @@ interface Message {
     emoji: string;
     count: number;
     users: string[];
+    userNames?: string[];
     hasReacted: boolean;
   }[];
   metadata?: {
@@ -163,6 +170,170 @@ export function MessageBubble({
     return FileText;
   };
 
+  const renderImageFiles = (images: any[]) => {
+    return (
+      <div className="space-y-2">
+        {images.length > 0 && (
+          <div className={cn(
+            "grid gap-2",
+            images.length === 1 ? "grid-cols-1" :
+            images.length === 2 ? "grid-cols-2" :
+            images.length === 3 ? "grid-cols-3" :
+            "grid-cols-2"
+          )}>
+            {images.map((img, idx) => (
+              <div key={idx} className="relative group">
+                <img
+                  src={img.thumbnailUrl || img.fileUrl}
+                  alt={img.fileName}
+                  className="rounded-lg max-w-full max-h-96 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => window.open(img.fileUrl, "_blank")}
+                />
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full shadow-lg"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(img.fileUrl, "_blank");
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {message.content && (
+          <div className="text-sm px-2">{message.content}</div>
+        )}
+      </div>
+    );
+  };
+
+  const renderVideoFiles = (videos: any[]) => {
+    return (
+      <div className="space-y-2">
+        {videos.map((video, idx) => (
+          <div key={idx} className="relative group">
+            <video
+              controls
+              className="rounded-lg max-w-sm max-h-96 w-full"
+              src={video.fileUrl}
+              poster={video.thumbnailUrl}
+            />
+            <div className="text-xs text-muted-foreground mt-1 px-1">
+              {video.fileName} • {formatFileSize(video.fileSize)}
+            </div>
+          </div>
+        ))}
+        {message.content && (
+          <div className="text-sm px-2">{message.content}</div>
+        )}
+      </div>
+    );
+  };
+
+  const renderAudioFiles = (audios: any[]) => {
+    return (
+      <div className="space-y-2">
+        {audios.map((audio, idx) => (
+          <div key={idx} className="space-y-2">
+            <audio controls className="w-full max-w-sm">
+              <source src={audio.fileUrl} type={audio.mimeType} />
+            </audio>
+            <div className="text-xs text-muted-foreground px-1">
+              {audio.fileName} • {formatFileSize(audio.fileSize)}
+            </div>
+          </div>
+        ))}
+        {message.content && (
+          <div className="text-sm px-2">{message.content}</div>
+        )}
+      </div>
+    );
+  };
+
+  const renderFileAttachments = (files: any[]) => {
+    return (
+      <div className="space-y-2">
+        {files.map((file, idx) => {
+          const FileIcon = getFileIcon(file.mimeType);
+          const mimeType = file.mimeType || "";
+          // Extract just the original filename from the long stored filename
+          const displayName = file.fileName?.split('-').slice(5).join('-') || file.fileName || 'Unknown file';
+
+          return (
+            <div key={idx} className={cn(
+              "flex items-center gap-3 p-3 rounded-lg border transition-all hover:shadow-md cursor-pointer max-w-md",
+              isOwnMessage
+                ? "bg-white/95 dark:bg-slate-800 border-white/20 dark:border-slate-700"
+                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+            )}
+            onClick={() => window.open(file.fileUrl, "_blank")}
+            >
+              <div className={cn(
+                "flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center shadow-sm",
+                mimeType.includes("pdf") ? "bg-red-100 dark:bg-red-900/40" :
+                mimeType.includes("zip") || mimeType.includes("rar") ? "bg-yellow-100 dark:bg-yellow-900/40" :
+                mimeType.includes("sheet") || mimeType.includes("excel") ? "bg-green-100 dark:bg-green-900/40" :
+                mimeType.includes("doc") || mimeType.includes("word") ? "bg-blue-100 dark:bg-blue-900/40" :
+                mimeType.includes("json") || mimeType.includes("xml") ? "bg-purple-100 dark:bg-purple-900/40" :
+                "bg-slate-100 dark:bg-slate-700"
+              )}>
+                <FileIcon className={cn(
+                  "h-6 w-6",
+                  mimeType.includes("pdf") ? "text-red-600 dark:text-red-400" :
+                  mimeType.includes("zip") || mimeType.includes("rar") ? "text-yellow-600 dark:text-yellow-400" :
+                  mimeType.includes("sheet") || mimeType.includes("excel") ? "text-green-600 dark:text-green-400" :
+                  mimeType.includes("doc") || mimeType.includes("word") ? "text-blue-600 dark:text-blue-400" :
+                  mimeType.includes("json") || mimeType.includes("xml") ? "text-purple-600 dark:text-purple-400" :
+                  "text-slate-600 dark:text-slate-400"
+                )} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className={cn(
+                  "font-medium text-sm truncate",
+                  isOwnMessage ? "text-slate-900 dark:text-slate-100" : "text-slate-900 dark:text-slate-100"
+                )}>
+                  {displayName}
+                </div>
+                <div className={cn(
+                  "text-xs mt-0.5",
+                  isOwnMessage ? "text-slate-600 dark:text-slate-400" : "text-slate-600 dark:text-slate-400"
+                )}>
+                  {formatFileSize(file.fileSize)} • {mimeType.split("/")[1]?.toUpperCase() || "FILE"}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "shrink-0 h-8 w-8",
+                  isOwnMessage ? "hover:bg-slate-100 dark:hover:bg-slate-700" : "hover:bg-slate-100 dark:hover:bg-slate-700"
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(file.fileUrl, "_blank");
+                }}
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            </div>
+          );
+        })}
+        {message.content && (
+          <div className={cn(
+            "text-sm mt-2",
+            isOwnMessage ? "text-white" : "text-slate-900 dark:text-slate-100"
+          )}>{message.content}</div>
+        )}
+      </div>
+    );
+  };
+
   const renderMessageContent = () => {
     if (message.isDeleted) {
       return (
@@ -170,6 +341,32 @@ export function MessageBubble({
           This message was deleted
         </div>
       );
+    }
+
+    // Check if message has file attachments regardless of messageType
+    const hasFiles = message.metadata?.files && message.metadata.files.length > 0;
+
+    // If there are files, render them with appropriate handlers
+    if (hasFiles) {
+      const files = message.metadata!.files!;
+      const hasImages = files.some(f => f.mimeType?.startsWith("image/"));
+      const hasVideos = files.some(f => f.mimeType?.startsWith("video/"));
+      const hasAudio = files.some(f => f.mimeType?.startsWith("audio/"));
+
+      // Separate files by type for proper rendering
+      if (hasImages && !hasVideos && !hasAudio) {
+        // Render as image message
+        return renderImageFiles(files.filter(f => f.mimeType?.startsWith("image/")));
+      } else if (hasVideos && !hasImages && !hasAudio) {
+        // Render as video message
+        return renderVideoFiles(files.filter(f => f.mimeType?.startsWith("video/")));
+      } else if (hasAudio && !hasImages && !hasVideos) {
+        // Render as audio message
+        return renderAudioFiles(files.filter(f => f.mimeType?.startsWith("audio/")));
+      } else {
+        // Mixed types or other files - render as file attachments
+        return renderFileAttachments(files);
+      }
     }
 
     switch (message.messageType) {
@@ -850,10 +1047,16 @@ export function MessageBubble({
           <div
             className={cn(
               "rounded-2xl px-4 py-2",
-              message.messageType === "image" || message.messageType === "video"
-                ? "p-0 overflow-hidden"
+              message.messageType === "image" ||
+              message.messageType === "video" ||
+              (message.metadata?.files && message.metadata.files.length > 0)
+                ? "p-2 overflow-hidden bg-transparent"
                 : "",
-              isOwnMessage ? "bg-blue-600 text-white" : "bg-muted"
+              isOwnMessage && !(message.metadata?.files && message.metadata.files.length > 0)
+                ? "bg-blue-600 text-white"
+                : !isOwnMessage && !(message.metadata?.files && message.metadata.files.length > 0)
+                ? "bg-muted"
+                : ""
             )}
           >
             {renderMessageContent()}
@@ -862,23 +1065,45 @@ export function MessageBubble({
 
         {/* Reactions */}
         {message.reactions && message.reactions.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {message.reactions.map((reaction, idx) => (
-              <button
-                key={idx}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors",
-                  reaction.hasReacted
-                    ? "bg-blue-600/10 border-blue-600 text-blue-600"
-                    : "bg-muted border-border hover:bg-muted/80"
-                )}
-                onClick={() => onReact?.(message.id, reaction.emoji)}
-              >
-                <span>{reaction.emoji}</span>
-                <span>{reaction.count}</span>
-              </button>
-            ))}
-          </div>
+          <TooltipProvider delayDuration={200}>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {message.reactions.map((reaction, idx) => {
+                // Format the tooltip text with user names
+                const tooltipText = reaction.userNames && reaction.userNames.length > 0
+                  ? reaction.userNames.join(', ')
+                  : `${reaction.count} ${reaction.count === 1 ? 'person' : 'people'} reacted`;
+
+                return (
+                  <Tooltip key={idx}>
+                    <TooltipTrigger asChild>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all hover:scale-105",
+                          reaction.hasReacted
+                            ? "bg-blue-600/10 border-blue-600 text-blue-600 dark:bg-blue-500/20"
+                            : "bg-muted border-border hover:bg-muted/80 hover:border-muted-foreground/30"
+                        )}
+                        onClick={() => onReact?.(message.id, reaction.emoji)}
+                      >
+                        <span>{reaction.emoji}</span>
+                        <span className="font-medium">{reaction.count}</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      className="bg-slate-900 dark:bg-slate-800 text-white border-slate-700 px-3 py-2 max-w-xs"
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <p className="text-xs font-medium">
+                          {tooltipText}
+                        </p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
         )}
 
         {/* Timestamp and status */}

@@ -18,6 +18,7 @@ import { UpdateParticipantDto } from './dto/update-participant.dto';
 import { GetConversationsDto } from './dto/get-conversations.dto';
 import { ConversationType, UserRole } from '@common/constants';
 import { Message } from '@modules/messages/entities/message.entity';
+import { MessageReaction } from '@modules/messages/entities/message-reaction.entity';
 import { ChannelSubscriber, ChannelSubscriberStatus } from '@modules/channels/entities/channel-subscriber.entity';
 import { Channel } from '@modules/channels/entities/channel.entity';
 
@@ -34,6 +35,8 @@ export class ConversationsService {
     private readonly blockedUserRepository: Repository<BlockedUser>,
     @InjectRepository(Message)
     private readonly messageRepository: Repository<Message>,
+    @InjectRepository(MessageReaction)
+    private readonly reactionRepository: Repository<MessageReaction>,
     @InjectRepository(ChannelSubscriber)
     private readonly channelSubscriberRepository: Repository<ChannelSubscriber>,
     @InjectRepository(Channel)
@@ -558,9 +561,6 @@ export class ConversationsService {
       .leftJoinAndSelect('message.sender', 'sender')
       .leftJoinAndSelect('message.replyTo', 'replyTo')
       .leftJoinAndSelect('replyTo.sender', 'replyToSender')
-      // TODO: Add reactions join when MessageReaction entity is implemented
-      // .leftJoinAndSelect('message.reactions', 'reactions')
-      // .leftJoinAndSelect('reactions.user', 'reactionUser')
       .where('message.conversationId = :conversationId', { conversationId })
       .andWhere('message.deletedAt IS NULL');
 
@@ -585,8 +585,27 @@ export class ConversationsService {
 
     const [messages, total] = await queryBuilder.getManyAndCount();
 
+    // Load reactions for each message
+    const messageIds = messages.map((m) => m.id);
+    let reactions = [];
+
+    if (messageIds.length > 0) {
+      reactions = await this.reactionRepository.find({
+        where: { messageId: In(messageIds) },
+        relations: ['user'],
+      });
+    }
+
+    // Attach reactions to messages
+    const messagesWithReactions = messages.map((message) => {
+      const messageReactions = reactions.filter((r) => r.messageId === message.id);
+      // Manually assign reactions to the entity
+      (message as any).reactions = messageReactions;
+      return message;
+    });
+
     return {
-      messages: messages.reverse(), // Reverse to show oldest first in UI
+      messages: messagesWithReactions.reverse(), // Reverse to show oldest first in UI
       pagination: {
         page,
         limit,

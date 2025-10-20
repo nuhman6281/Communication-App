@@ -192,8 +192,8 @@ export function useRemoveReaction(conversationId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ messageId, reactionId }: { messageId: string; reactionId: string }) =>
-      messagesApi.removeReaction(messageId, reactionId),
+    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
+      messagesApi.removeReaction(messageId, emoji),
     onSuccess: async (_, { messageId }) => {
       await invalidateQueries.message(conversationId, messageId);
     },

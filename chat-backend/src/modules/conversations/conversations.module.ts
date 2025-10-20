@@ -7,6 +7,7 @@ import { ConversationParticipant } from './entities/conversation-participant.ent
 import { User } from '@modules/users/entities/user.entity';
 import { BlockedUser } from '@modules/users/entities/blocked-users.entity';
 import { Message } from '@modules/messages/entities/message.entity';
+import { MessageReaction } from '@modules/messages/entities/message-reaction.entity';
 import { ChannelSubscriber } from '@modules/channels/entities/channel-subscriber.entity';
 import { Channel } from '@modules/channels/entities/channel.entity';
 
@@ -18,6 +19,7 @@ import { Channel } from '@modules/channels/entities/channel.entity';
       User,
       BlockedUser,
       Message,
+      MessageReaction,
       ChannelSubscriber,
       Channel,
     ]),

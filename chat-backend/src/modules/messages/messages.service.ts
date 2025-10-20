@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, IsNull } from 'typeorm';
+import { Repository, LessThan, IsNull, In } from 'typeorm';
 import { Message } from './entities/message.entity';
 import { MessageReaction } from './entities/message-reaction.entity';
 import { MessageRead } from './entities/message-read.entity';
@@ -140,16 +140,22 @@ export class MessagesService {
 
     // Load reactions for each message
     const messageIds = messages.map((m) => m.id);
-    const reactions = await this.reactionRepository.find({
-      where: { messageId: LessThan(messageIds.length) ? undefined : undefined },
-      relations: ['user'],
-    });
+    let reactions = [];
+
+    if (messageIds.length > 0) {
+      reactions = await this.reactionRepository.find({
+        where: { messageId: In(messageIds) },
+        relations: ['user'],
+      });
+    }
 
     // Attach reactions to messages
-    const messagesWithReactions = messages.map((message) => ({
-      ...message,
-      reactions: reactions.filter((r) => r.messageId === message.id),
-    }));
+    const messagesWithReactions = messages.map((message) => {
+      const messageReactions = reactions.filter((r) => r.messageId === message.id);
+      // Manually assign reactions to the entity
+      (message as any).reactions = messageReactions;
+      return message;
+    });
 
     return {
       messages: messagesWithReactions.reverse(), // Return in chronological order

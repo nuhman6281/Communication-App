@@ -88,6 +88,38 @@ export function ChatWindow({
       .flatMap((page) => page.items)
       .filter((msg) => msg && msg.id) || [];
 
+  // Helper function to transform reactions from backend format to UI format
+  const transformReactions = (backendReactions: any[]) => {
+    if (!backendReactions || backendReactions.length === 0) return [];
+
+    // Group reactions by emoji
+    const reactionMap = new Map<string, { emoji: string; userIds: string[]; userNames: string[]; count: number }>();
+
+    backendReactions.forEach((reaction) => {
+      const emoji = reaction.emoji;
+      if (!reactionMap.has(emoji)) {
+        reactionMap.set(emoji, { emoji, userIds: [], userNames: [], count: 0 });
+      }
+      const group = reactionMap.get(emoji)!;
+      group.userIds.push(reaction.userId);
+      // Get user's display name from the user object if available
+      const displayName = reaction.user
+        ? `${reaction.user.firstName || ''} ${reaction.user.lastName || ''}`.trim() || reaction.user.username
+        : 'Unknown User';
+      group.userNames.push(displayName);
+      group.count++;
+    });
+
+    // Convert to UI format
+    return Array.from(reactionMap.values()).map((group) => ({
+      emoji: group.emoji,
+      count: group.count,
+      hasReacted: group.userIds.includes(user?.id || ""),
+      users: group.userIds, // Include user IDs for removal
+      userNames: group.userNames, // Include user names for tooltip
+    }));
+  };
+
   // Get conversation info
   const getConversationInfo = () => {
     if (!conversation)
@@ -205,15 +237,16 @@ export function ChatWindow({
     try {
       // Find if user already reacted with this emoji
       const message = allMessages.find(m => m.id === messageId);
-      const existingReaction = message?.reactions?.find(
-        r => r.emoji === emoji && r.users?.includes(user?.id || "")
+      const transformedReactions = transformReactions(message?.reactions || []);
+      const existingReaction = transformedReactions.find(
+        r => r.emoji === emoji && r.hasReacted
       );
 
       if (existingReaction) {
-        // Remove reaction
+        // Remove reaction - backend expects emoji, not reactionId
         await removeReactionMutation.mutateAsync({
           messageId,
-          reactionId: existingReaction.id,
+          emoji,
         });
       } else {
         // Add reaction
@@ -386,7 +419,7 @@ export function ChatWindow({
                     content: msg.replyTo.content,
                     senderName: msg.replyTo.sender?.username || "Unknown",
                   } : undefined,
-                  reactions: msg.reactions,
+                  reactions: transformReactions(msg.reactions || []),
                   metadata: msg.metadata,
                 }}
                 currentUserId={user?.id || ""}

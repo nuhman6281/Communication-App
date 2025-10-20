@@ -60,8 +60,8 @@ export const messagesApi = {
   /**
    * Remove reaction from message
    */
-  removeReaction: async (id: string, reactionId: string): Promise<void> => {
-    await apiClient.delete(`/messages/${id}/reactions/${reactionId}`);
+  removeReaction: async (id: string, emoji: string): Promise<void> => {
+    await apiClient.delete(`/messages/${id}/reactions/${encodeURIComponent(emoji)}`);
   },
 
   /**

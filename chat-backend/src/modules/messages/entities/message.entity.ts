@@ -1,7 +1,8 @@
-import { Entity, Column, Index, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, Index, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { BaseEntity } from '@common/entities/base.entity';
 import { MessageType } from '@common/constants';
 import { User } from '@modules/users/entities/user.entity';
+import { MessageReaction } from './message-reaction.entity';
 
 @Entity('messages')
 @Index(['conversationId', 'createdAt'])
@@ -46,8 +47,8 @@ export class Message extends BaseEntity {
   replyTo?: Message;
 
   // Additional relationships will be added as modules are implemented
-  // @OneToMany(() => MessageReaction, (reaction) => reaction.message)
-  // reactions: MessageReaction[];
+  @OneToMany(() => MessageReaction, (reaction) => reaction.message)
+  reactions: MessageReaction[];
 
   // @OneToMany(() => Media, (media) => media.message)
   // media: Media[];
