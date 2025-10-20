@@ -55,6 +55,7 @@ export class GroupsService {
       type: createGroupDto.type || GroupType.PRIVATE,
       privacy: createGroupDto.privacy || GroupPrivacy.INVITE_ONLY,
       conversationId: conversation.id,
+      createdById: userId,
       maxMembers: createGroupDto.maxMembers || 256,
       memberCount: 1,
       settings: createGroupDto.settings || {
@@ -65,6 +66,9 @@ export class GroupsService {
       },
       tags: createGroupDto.tags || [],
       category: createGroupDto.category,
+      // Workspace integration
+      workspaceId: createGroupDto.workspaceId || null,
+      isWorkspaceOwned: !!createGroupDto.workspaceId,
     });
 
     const savedGroup = await this.groupRepository.save(group);

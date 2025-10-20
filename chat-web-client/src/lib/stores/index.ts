@@ -40,5 +40,14 @@ export {
   startTypingCleanup,
 } from './presence.store';
 
+// Workspace Store
+export {
+  useWorkspaceStore,
+  useCurrentWorkspaceId,
+  useCurrentWorkspace,
+  useWorkspaces,
+  useWorkspaceActions,
+} from './workspace.store';
+
 // Re-export types
 export type { ViewType } from './ui.store';

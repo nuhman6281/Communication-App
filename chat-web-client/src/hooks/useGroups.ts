@@ -10,7 +10,7 @@ import type { CreateGroupRequest, UpdateGroupRequest, UpdateGroupMemberRoleReque
 
 export function useGroups(params?: PaginationParams) {
   return useQuery({
-    queryKey: queryKeys.groups.all(params),
+    queryKey: queryKeys.groups.list(params),
     queryFn: () => groupsApi.getAll(params),
     staleTime: 1 * 60 * 1000,
   });
@@ -40,7 +40,8 @@ export function useCreateGroup() {
   return useMutation({
     mutationFn: (data: CreateGroupRequest) => groupsApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all() });
     },
     meta: {
       successMessage: 'Group created successfully',
@@ -70,7 +71,7 @@ export function useDeleteGroup() {
     mutationFn: (id: string) => groupsApi.delete(id),
     onSuccess: (_, id) => {
       queryClient.removeQueries({ queryKey: queryKeys.groups.detail(id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all });
     },
     meta: {
       successMessage: 'Group deleted successfully',

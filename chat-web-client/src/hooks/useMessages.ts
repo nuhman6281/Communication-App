@@ -76,17 +76,20 @@ export function useSendMessage(conversationId: string) {
           senderId: user!.id,
           sender: user!,
           content: newMessage.content,
-          type: newMessage.type as any,
+          messageType: newMessage.type as any, // Backend returns messageType
           metadata: newMessage.metadata || null,
           reactions: [],
           attachments: [],
           isEdited: false,
           isPinned: false,
           isDeleted: false,
+          isForwarded: false,
+          readBy: [],
           parentMessageId: newMessage.parentMessageId || null,
           parentMessage: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          deletedAt: null,
         };
 
         return {

@@ -67,7 +67,7 @@ export interface Message {
   senderId: string;
   sender: User;
   content: string;
-  type: MessageType;
+  messageType: MessageType; // Changed from 'type' to 'messageType' to match backend
   metadata: MessageMetadata | null;
   parentMessageId: string | null;
   parentMessage: Message | null;
@@ -76,9 +76,11 @@ export interface Message {
   isPinned: boolean;
   isForwarded: boolean;
   readBy: MessageRead[];
+  attachments?: any[]; // Added for file attachments
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  isDeleted?: boolean; // Added for soft delete flag
 }
 
 export enum MessageType {
@@ -381,8 +383,9 @@ export enum SearchType {
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
-  page: number;
+  currentPage: number;
   limit: number;
+  totalPages: number;
 }
 
 // ============================================================================
@@ -394,4 +397,165 @@ export interface TypingIndicator {
   userId: string;
   user: User;
   timestamp: number;
+}
+
+// ============================================================================
+// Workspace Types
+// ============================================================================
+
+export interface Workspace {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  logoUrl: string | null;
+  bannerUrl: string | null;
+  ownerId: string;
+  owner?: User;
+  settings: WorkspaceSettings;
+  memberCount: number;
+  channelCount: number;
+  groupCount: number;
+  isActive: boolean;
+  isVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
+  currentUserMembership?: WorkspaceMember;
+  currentUserRole?: WorkspaceRole;
+}
+
+export interface WorkspaceSettings {
+  allowPersonalDms?: boolean;
+  allowExternalGroups?: boolean;
+  requireEmailDomain?: string[];
+  ssoEnabled?: boolean;
+  samlConfig?: Record<string, any>;
+  defaultMemberPermissions?: string[];
+  allowGuestInvites?: boolean;
+  maxMembers?: number;
+  customBranding?: {
+    primaryColor?: string;
+    logo?: string;
+    theme?: 'light' | 'dark' | 'auto';
+  };
+}
+
+export interface WorkspaceMember {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  user?: User;
+  workspace?: Workspace;
+  role: WorkspaceRole;
+  customPermissions: string[];
+  status: MemberStatus;
+  invitedById: string | null;
+  invitedBy?: User | null;
+  inviteCode: string | null;
+  invitedAt: string | null;
+  joinedAt: string | null;
+  lastSeenAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export enum WorkspaceRole {
+  OWNER = 'owner',
+  ADMIN = 'admin',
+  MODERATOR = 'moderator',
+  MEMBER = 'member',
+  GUEST = 'guest',
+}
+
+export enum MemberStatus {
+  ACTIVE = 'active',
+  INVITED = 'invited',
+  SUSPENDED = 'suspended',
+  LEFT = 'left',
+}
+
+// Workspace API Data Types
+export interface CreateWorkspaceData {
+  name: string;
+  slug: string;
+  description?: string;
+  logoUrl?: string;
+  bannerUrl?: string;
+  settings?: Partial<WorkspaceSettings>;
+}
+
+export interface UpdateWorkspaceData {
+  name?: string;
+  description?: string;
+  logoUrl?: string;
+  bannerUrl?: string;
+  settings?: Partial<WorkspaceSettings>;
+  isActive?: boolean;
+}
+
+export interface InviteMemberData {
+  email: string;
+  role?: WorkspaceRole;
+  customPermissions?: string[];
+}
+
+export interface UpdateMemberRoleData {
+  role?: WorkspaceRole;
+  customPermissions?: string[];
+  status?: MemberStatus;
+}
+
+// Workspace API Response Types
+export interface WorkspaceListResponse {
+  workspaces: Workspace[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface WorkspaceMembersResponse {
+  members: WorkspaceMember[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface InviteLinkResponse {
+  inviteCode: string;
+  inviteUrl: string;
+  workspaceId: string;
+  workspaceName: string;
+}
+
+export interface JoinWorkspaceResponse {
+  message: string;
+  workspace: Workspace;
+  membership: WorkspaceMember;
+}
+
+export interface WorkspaceGroupsResponse {
+  groups: Group[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface WorkspaceChannelsResponse {
+  channels: Channel[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }

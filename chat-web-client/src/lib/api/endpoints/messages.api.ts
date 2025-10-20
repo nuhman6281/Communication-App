@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client';
+import { transformPaginatedResponse } from '../utils';
 import type { SendMessageRequest, UpdateMessageRequest, AddReactionRequest, PaginationParams } from '@/types/api.types';
 import type { Message, MessageReaction, PaginatedResponse } from '@/types/entities.types';
 
@@ -13,7 +14,7 @@ export const messagesApi = {
    */
   getByConversation: async (conversationId: string, params?: PaginationParams): Promise<PaginatedResponse<Message>> => {
     const response = await apiClient.get(`/conversations/${conversationId}/messages`, { params });
-    return response.data;
+    return transformPaginatedResponse<Message>(response.data, 'messages');
   },
 
   /**
@@ -29,6 +30,7 @@ export const messagesApi = {
    */
   send: async (data: SendMessageRequest): Promise<Message> => {
     const response = await apiClient.post('/messages', data);
+    // Backend returns the message directly after interceptor extracts data
     return response.data;
   },
 
@@ -91,6 +93,6 @@ export const messagesApi = {
    */
   getThread: async (id: string, params?: PaginationParams): Promise<PaginatedResponse<Message>> => {
     const response = await apiClient.get(`/messages/${id}/thread`, { params });
-    return response.data;
+    return transformPaginatedResponse<Message>(response.data, 'messages');
   },
 };

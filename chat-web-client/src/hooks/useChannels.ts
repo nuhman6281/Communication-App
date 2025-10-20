@@ -9,7 +9,7 @@ import type { CreateChannelRequest, UpdateChannelRequest, PaginationParams } fro
 
 export function useChannels(params?: PaginationParams) {
   return useQuery({
-    queryKey: queryKeys.channels.all(params),
+    queryKey: queryKeys.channels.list(params),
     queryFn: () => channelsApi.getAll(params),
     staleTime: 1 * 60 * 1000,
   });
@@ -27,7 +27,10 @@ export function useCreateChannel() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateChannelRequest) => channelsApi.create(data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.channels.all() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.channels.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all() });
+    },
     meta: { successMessage: 'Channel created', errorMessage: 'Failed to create channel' },
   });
 }

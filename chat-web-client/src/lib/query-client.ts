@@ -102,7 +102,8 @@ export const queryKeys = {
   users: {
     all: ['users'] as const,
     detail: (id: string) => ['users', id] as const,
-    search: (query: string) => ['users', 'search', query] as const,
+    search: (params?: Record<string, unknown>) => ['users', 'search', params] as const,
+    me: () => ['users', 'me'] as const,
     blocked: ['users', 'blocked'] as const,
   },
 
@@ -110,6 +111,7 @@ export const queryKeys = {
   conversations: {
     all: (params?: Record<string, unknown>) => ['conversations', params] as const,
     detail: (id: string) => ['conversations', id] as const,
+    self: ['conversations', 'self'] as const,
   },
 
   // Messages
@@ -123,7 +125,8 @@ export const queryKeys = {
 
   // Groups
   groups: {
-    all: (params?: Record<string, unknown>) => ['groups', params] as const,
+    all: ['groups'] as const,
+    list: (params?: Record<string, unknown>) => ['groups', params] as const,
     detail: (id: string) => ['groups', id] as const,
     members: (id: string, params?: Record<string, unknown>) =>
       ['groups', id, 'members', params] as const,
@@ -132,12 +135,13 @@ export const queryKeys = {
 
   // Channels
   channels: {
-    all: (params?: Record<string, unknown>) => ['channels', params] as const,
+    all: ['channels'] as const,
+    list: (params?: Record<string, unknown>) => ['channels', params] as const,
     detail: (id: string) => ['channels', id] as const,
     members: (id: string, params?: Record<string, unknown>) =>
       ['channels', id, 'members', params] as const,
-    search: (query: string, params?: Record<string, unknown>) =>
-      ['channels', 'search', query, params] as const,
+    search: (params?: Record<string, unknown>) =>
+      ['channels', 'search', params] as const,
   },
 
   // Stories

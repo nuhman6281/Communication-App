@@ -62,4 +62,12 @@ export class CreateGroupDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @ApiProperty({
+    description: 'Workspace ID (optional - for workspace-owned groups)',
+    required: false
+  })
+  @IsOptional()
+  @IsUUID('4')
+  workspaceId?: string;
 }

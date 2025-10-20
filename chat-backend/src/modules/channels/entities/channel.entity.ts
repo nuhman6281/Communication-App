@@ -3,6 +3,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
   Index,
   RelationId,
@@ -10,6 +11,8 @@ import {
 import { BaseEntity } from '@common/entities/base.entity';
 import { User } from '@modules/users/entities/user.entity';
 import { ChannelSubscriber } from './channel-subscriber.entity';
+import { Workspace } from '@modules/workspaces/entities/workspace.entity';
+import { Conversation } from '@modules/conversations/entities/conversation.entity';
 
 export enum ChannelType {
   PUBLIC = 'public',
@@ -30,6 +33,7 @@ export enum ChannelCategory {
 @Index(['type', 'isActive'])
 @Index(['category', 'isActive'])
 @Index(['isVerified'])
+@Index(['workspaceId'])
 export class Channel extends BaseEntity {
   @Column({ type: 'varchar', length: 100 })
   name: string;
@@ -62,6 +66,21 @@ export class Channel extends BaseEntity {
 
   @Column({ type: 'uuid', nullable: true })
   conversationId: string | null;
+
+  @OneToOne(() => Conversation, { nullable: true })
+  @JoinColumn({ name: 'conversationId' })
+  conversation: Conversation | null;
+
+  // Workspace Integration (optional - for workspace-owned channels)
+  @Column({ type: 'uuid', nullable: true, name: 'workspace_id' })
+  workspaceId: string | null;
+
+  @ManyToOne(() => Workspace, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'workspace_id' })
+  workspace: Workspace | null;
+
+  @Column({ type: 'boolean', default: false, name: 'is_workspace_owned' })
+  isWorkspaceOwned: boolean;
 
   @Column({ type: 'integer', default: 0 })
   subscriberCount: number;

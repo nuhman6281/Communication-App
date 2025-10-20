@@ -8,6 +8,7 @@ import {
   IsObject,
   MaxLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { MessageType } from '@common/constants';
 
 export class CreateMessageDto {
@@ -38,7 +39,13 @@ export class CreateMessageDto {
   })
   @IsEnum(MessageType)
   @IsOptional()
+  @Transform(({ obj }) => obj.messageType || obj.type || MessageType.TEXT)
   messageType?: MessageType;
+
+  // Alias for messageType (for backwards compatibility)
+  @IsOptional()
+  @IsEnum(MessageType)
+  type?: MessageType;
 
   @ApiProperty({
     example: '123e4567-e89b-12d3-a456-426614174000',

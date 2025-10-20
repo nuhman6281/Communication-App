@@ -2,6 +2,7 @@ import {
   Entity,
   Column,
   OneToMany,
+  OneToOne,
   ManyToOne,
   JoinColumn,
   Index,
@@ -60,6 +61,10 @@ export class Conversation extends BaseEntity {
     { cascade: true },
   )
   participants: ConversationParticipant[];
+
+  // Channel relationship (for channel-type conversations)
+  @OneToOne('Channel', 'conversation', { nullable: true })
+  channel?: any; // Using any to avoid circular dependency
 
   // Virtual field for participant count (will be loaded separately)
   participantCount?: number;

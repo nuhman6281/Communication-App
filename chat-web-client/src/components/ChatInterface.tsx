@@ -46,7 +46,15 @@ export function ChatInterface() {
       case 'workspace':
         return <WorkspaceView onBack={() => setCurrentView('chat')} />;
       case 'create-group':
-        return <GroupCreation onBack={() => setCurrentView('chat')} />;
+        return (
+          <GroupCreation
+            onBack={() => setCurrentView('chat')}
+            onGroupCreated={(groupId) => {
+              setCurrentView('chat');
+              setSelectedConversation(groupId);
+            }}
+          />
+        );
       case 'chat':
       default:
         return (

@@ -8,6 +8,7 @@ import {
   Matches,
   IsObject,
   MinLength,
+  IsUUID,
 } from 'class-validator';
 import { ChannelType, ChannelCategory } from '../entities/channel.entity';
 
@@ -62,4 +63,12 @@ export class CreateChannelDto {
   @IsOptional()
   @IsObject()
   settings?: Record<string, any>;
+
+  @ApiProperty({
+    description: 'Workspace ID (optional - for workspace-owned channels)',
+    required: false
+  })
+  @IsOptional()
+  @IsUUID('4')
+  workspaceId?: string;
 }

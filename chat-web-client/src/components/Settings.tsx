@@ -3,13 +3,20 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Slider } from './ui/slider';
-import { ArrowLeft, Bell, Moon, Globe, Lock, Database, Smartphone, Palette } from 'lucide-react';
+import { ArrowLeft, Bell, Moon, Globe, Lock, Database, Smartphone, Palette, LogOut } from 'lucide-react';
+import { useLogout } from '@/hooks/useAuth';
 
 interface SettingsProps {
   onBack: () => void;
 }
 
 export function Settings({ onBack }: SettingsProps) {
+  const { mutate: logout, isPending: isLoggingOut } = useLogout();
+
+  const handleLogout = () => {
+    logout();
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-background">
       {/* Header */}
@@ -275,6 +282,19 @@ export function Settings({ onBack }: SettingsProps) {
               </Button>
             </div>
           </div>
+        </div>
+
+        {/* Logout */}
+        <div className="pt-4 border-t border-border">
+          <Button
+            variant="destructive"
+            className="w-full"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            {isLoggingOut ? 'Logging out...' : 'Log Out'}
+          </Button>
         </div>
       </div>
     </div>

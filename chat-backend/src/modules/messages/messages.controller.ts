@@ -24,6 +24,7 @@ import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { GetMessagesDto } from './dto/get-messages.dto';
 import { MessageReactionDto } from './dto/message-reaction.dto';
+import { ForwardMessageDto } from './dto/forward-message.dto';
 
 @ApiTags('messages')
 @ApiBearerAuth()
@@ -140,5 +141,80 @@ export class MessagesController {
   @ApiResponse({ status: 403, description: 'Access denied' })
   async getReadReceipts(@CurrentUser() user: User, @Param('id') messageId: string) {
     return this.messagesService.getReadReceipts(user.id, messageId);
+  }
+
+  // ==================== Forward Messages ====================
+
+  @Post(':id/forward')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Forward message to multiple conversations' })
+  @ApiParam({ name: 'id', description: 'Message ID' })
+  @ApiResponse({ status: 200, description: 'Message forwarded successfully' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  async forwardMessage(
+    @CurrentUser() user: User,
+    @Param('id') messageId: string,
+    @Body() forwardMessageDto: ForwardMessageDto,
+  ) {
+    return this.messagesService.forwardMessage(user.id, messageId, forwardMessageDto);
+  }
+
+  // ==================== Edit History ====================
+
+  @Get(':id/edit-history')
+  @ApiOperation({ summary: 'Get edit history for a message' })
+  @ApiParam({ name: 'id', description: 'Message ID' })
+  @ApiResponse({ status: 200, description: 'Edit history retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  async getEditHistory(@CurrentUser() user: User, @Param('id') messageId: string) {
+    return this.messagesService.getEditHistory(user.id, messageId);
+  }
+
+  // ==================== Pinned Messages ====================
+
+  @Post('conversations/:conversationId/pin/:messageId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Pin a message in a conversation' })
+  @ApiParam({ name: 'conversationId', description: 'Conversation ID' })
+  @ApiParam({ name: 'messageId', description: 'Message ID' })
+  @ApiResponse({ status: 200, description: 'Message pinned successfully' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  async pinMessage(
+    @CurrentUser() user: User,
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.messagesService.pinMessage(user.id, conversationId, messageId);
+  }
+
+  @Delete('conversations/:conversationId/pin/:messageId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unpin a message from a conversation' })
+  @ApiParam({ name: 'conversationId', description: 'Conversation ID' })
+  @ApiParam({ name: 'messageId', description: 'Message ID' })
+  @ApiResponse({ status: 200, description: 'Message unpinned successfully' })
+  @ApiResponse({ status: 404, description: 'Pinned message not found' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  async unpinMessage(
+    @CurrentUser() user: User,
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.messagesService.unpinMessage(user.id, conversationId, messageId);
+  }
+
+  @Get('conversations/:conversationId/pinned')
+  @ApiOperation({ summary: 'Get all pinned messages in a conversation' })
+  @ApiParam({ name: 'conversationId', description: 'Conversation ID' })
+  @ApiResponse({ status: 200, description: 'Pinned messages retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  async getPinnedMessages(
+    @CurrentUser() user: User,
+    @Param('conversationId') conversationId: string,
+  ) {
+    return this.messagesService.getPinnedMessages(user.id, conversationId);
   }
 }

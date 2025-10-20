@@ -86,11 +86,15 @@ export function useRegister() {
  * Logout mutation
  */
 export function useLogout() {
-  const { logout } = useAuthStore();
+  const { logout, refreshToken } = useAuthStore();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: authApi.logout,
+    mutationFn: () => {
+      // Get refresh token from localStorage as fallback
+      const token = refreshToken || localStorage.getItem('refreshToken') || '';
+      return authApi.logout(token);
+    },
     onSuccess: () => {
       // Clear auth state
       logout();

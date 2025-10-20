@@ -9,12 +9,15 @@ import { Repository, LessThan, IsNull } from 'typeorm';
 import { Message } from './entities/message.entity';
 import { MessageReaction } from './entities/message-reaction.entity';
 import { MessageRead } from './entities/message-read.entity';
+import { MessageEditHistory } from './entities/message-edit-history.entity';
+import { PinnedMessage } from './entities/pinned-message.entity';
 import { Conversation } from '@modules/conversations/entities/conversation.entity';
 import { ConversationParticipant } from '@modules/conversations/entities/conversation-participant.entity';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { GetMessagesDto } from './dto/get-messages.dto';
 import { MessageReactionDto } from './dto/message-reaction.dto';
+import { ForwardMessageDto } from './dto/forward-message.dto';
 
 @Injectable()
 export class MessagesService {
@@ -25,6 +28,10 @@ export class MessagesService {
     private readonly reactionRepository: Repository<MessageReaction>,
     @InjectRepository(MessageRead)
     private readonly readRepository: Repository<MessageRead>,
+    @InjectRepository(MessageEditHistory)
+    private readonly editHistoryRepository: Repository<MessageEditHistory>,
+    @InjectRepository(PinnedMessage)
+    private readonly pinnedMessageRepository: Repository<PinnedMessage>,
     @InjectRepository(Conversation)
     private readonly conversationRepository: Repository<Conversation>,
     @InjectRepository(ConversationParticipant)
@@ -125,7 +132,7 @@ export class MessagesService {
     }
 
     queryBuilder
-      .orderBy('message.createdAt', 'DESC')
+      .orderBy('message.createdAt', 'ASC')
       .skip((page - 1) * limit)
       .take(limit);
 
@@ -204,6 +211,17 @@ export class MessagesService {
       throw new BadRequestException('Cannot edit a deleted message');
     }
 
+    // Save current content to edit history before updating
+    const editHistory = this.editHistoryRepository.create({
+      messageId: message.id,
+      content: message.content,
+      metadata: message.metadata,
+      editedAt: new Date(),
+    });
+
+    await this.editHistoryRepository.save(editHistory);
+
+    // Update message
     message.content = updateMessageDto.content;
     message.isEdited = true;
 
@@ -380,6 +398,236 @@ export class MessagesService {
       messageId,
       readCount: reads.length,
       reads,
+    };
+  }
+
+  /**
+   * Forward message to multiple conversations
+   */
+  async forwardMessage(
+    userId: string,
+    messageId: string,
+    forwardMessageDto: ForwardMessageDto,
+  ) {
+    // Get original message
+    const originalMessage = await this.messageRepository.findOne({
+      where: { id: messageId },
+      relations: ['sender'],
+    });
+
+    if (!originalMessage) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Verify user has access to the original message
+    const originalParticipant = await this.participantRepository.findOne({
+      where: {
+        conversationId: originalMessage.conversationId,
+        userId,
+        leftAt: IsNull(),
+      },
+    });
+
+    if (!originalParticipant) {
+      throw new ForbiddenException('Access denied to original message');
+    }
+
+    // Cannot forward deleted messages
+    if (originalMessage.isDeleted) {
+      throw new BadRequestException('Cannot forward a deleted message');
+    }
+
+    const forwardedMessages = [];
+
+    // Forward to each conversation
+    for (const targetConversationId of forwardMessageDto.conversationIds) {
+      // Verify user is participant in target conversation
+      const targetParticipant = await this.participantRepository.findOne({
+        where: {
+          conversationId: targetConversationId,
+          userId,
+          leftAt: IsNull(),
+        },
+      });
+
+      if (!targetParticipant) {
+        throw new ForbiddenException(
+          `You are not a participant in conversation ${targetConversationId}`,
+        );
+      }
+
+      // Create forwarded message
+      const forwardedMessage = this.messageRepository.create({
+        conversationId: targetConversationId,
+        senderId: userId,
+        content: originalMessage.content,
+        messageType: originalMessage.messageType,
+        metadata: {
+          ...originalMessage.metadata,
+          forwarded: true,
+          originalMessageId: originalMessage.id,
+          originalSenderId: originalMessage.senderId,
+          originalSenderName: originalMessage.sender?.username,
+        },
+      });
+
+      await this.messageRepository.save(forwardedMessage);
+
+      // Update conversation last message
+      await this.conversationRepository.update(targetConversationId, {
+        lastMessageId: forwardedMessage.id,
+        lastMessageAt: forwardedMessage.createdAt,
+      });
+
+      // Load complete message with relations
+      const completeMessage = await this.messageRepository.findOne({
+        where: { id: forwardedMessage.id },
+        relations: ['sender'],
+      });
+
+      forwardedMessages.push(completeMessage);
+    }
+
+    return {
+      message: 'Message forwarded successfully',
+      forwardedMessages,
+    };
+  }
+
+  /**
+   * Get edit history for a message
+   */
+  async getEditHistory(userId: string, messageId: string) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Verify user is participant
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId: message.conversationId, userId },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const history = await this.editHistoryRepository.find({
+      where: { messageId },
+      order: { editedAt: 'DESC' },
+    });
+
+    return {
+      messageId,
+      currentContent: message.content,
+      editCount: history.length,
+      history,
+    };
+  }
+
+  /**
+   * Pin a message in a conversation
+   */
+  async pinMessage(userId: string, conversationId: string, messageId: string) {
+    // Verify message exists and belongs to conversation
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId, conversationId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found in this conversation');
+    }
+
+    // Verify user is participant
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId, userId, leftAt: IsNull() },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    // Check if already pinned
+    const existingPin = await this.pinnedMessageRepository.findOne({
+      where: { conversationId, messageId },
+    });
+
+    if (existingPin) {
+      return existingPin;
+    }
+
+    // Create pin
+    const pinnedMessage = this.pinnedMessageRepository.create({
+      conversationId,
+      messageId,
+      pinnedById: userId,
+      pinnedAt: new Date(),
+    });
+
+    await this.pinnedMessageRepository.save(pinnedMessage);
+
+    return this.pinnedMessageRepository.findOne({
+      where: { id: pinnedMessage.id },
+      relations: ['message', 'pinnedBy'],
+    });
+  }
+
+  /**
+   * Unpin a message from a conversation
+   */
+  async unpinMessage(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+  ) {
+    const pinnedMessage = await this.pinnedMessageRepository.findOne({
+      where: { conversationId, messageId },
+    });
+
+    if (!pinnedMessage) {
+      throw new NotFoundException('Pinned message not found');
+    }
+
+    // Verify user is participant
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId, userId, leftAt: IsNull() },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    await this.pinnedMessageRepository.remove(pinnedMessage);
+
+    return { message: 'Message unpinned successfully' };
+  }
+
+  /**
+   * Get all pinned messages in a conversation
+   */
+  async getPinnedMessages(userId: string, conversationId: string) {
+    // Verify user is participant
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId, userId },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const pinnedMessages = await this.pinnedMessageRepository.find({
+      where: { conversationId },
+      relations: ['message', 'message.sender', 'pinnedBy'],
+      order: { pinnedAt: 'DESC' },
+    });
+
+    return {
+      conversationId,
+      count: pinnedMessages.length,
+      pinnedMessages,
     };
   }
 }

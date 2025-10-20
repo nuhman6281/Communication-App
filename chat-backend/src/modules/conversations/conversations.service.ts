@@ -18,6 +18,8 @@ import { UpdateParticipantDto } from './dto/update-participant.dto';
 import { GetConversationsDto } from './dto/get-conversations.dto';
 import { ConversationType, UserRole } from '@common/constants';
 import { Message } from '@modules/messages/entities/message.entity';
+import { ChannelSubscriber, ChannelSubscriberStatus } from '@modules/channels/entities/channel-subscriber.entity';
+import { Channel } from '@modules/channels/entities/channel.entity';
 
 @Injectable()
 export class ConversationsService {
@@ -32,6 +34,10 @@ export class ConversationsService {
     private readonly blockedUserRepository: Repository<BlockedUser>,
     @InjectRepository(Message)
     private readonly messageRepository: Repository<Message>,
+    @InjectRepository(ChannelSubscriber)
+    private readonly channelSubscriberRepository: Repository<ChannelSubscriber>,
+    @InjectRepository(Channel)
+    private readonly channelRepository: Repository<Channel>,
   ) {}
 
   /**
@@ -133,6 +139,44 @@ export class ConversationsService {
   async getUserConversations(userId: string, query: GetConversationsDto) {
     const { type, archived = false, pinned = false, page = 1, limit = 20 } = query;
 
+    // Special handling for channels - query channel_subscribers instead of conversation_participants
+    if (type === ConversationType.CHANNEL) {
+      const queryBuilder = this.conversationRepository
+        .createQueryBuilder('conversation')
+        .innerJoin('conversation.channel', 'channel')
+        .innerJoin('channel.subscribers', 'subscriber')
+        .where('subscriber.userId = :userId', { userId })
+        .andWhere('subscriber.status = :status', {
+          status: ChannelSubscriberStatus.ACTIVE
+        })
+        .andWhere('conversation.type = :type', { type: ConversationType.CHANNEL });
+
+      // Load channel details and user's subscription info
+      queryBuilder
+        .leftJoinAndSelect('conversation.channel', 'channelDetails')
+        .leftJoin('channelDetails.subscribers', 'userSub', 'userSub.userId = :userId', { userId })
+        .addSelect(['userSub.role', 'userSub.status', 'userSub.notificationsEnabled', 'userSub.subscribedAt']);
+
+      // Sort by last message time
+      queryBuilder.orderBy('conversation.lastMessageAt', 'ASC', 'NULLS FIRST');
+      queryBuilder.addOrderBy('conversation.createdAt', 'ASC');
+
+      // Pagination
+      const skip = (page - 1) * limit;
+      queryBuilder.skip(skip).take(limit);
+
+      const [conversations, total] = await queryBuilder.getManyAndCount();
+
+      return {
+        items: conversations,
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      };
+    }
+
+    // Original logic for groups and direct conversations
     const queryBuilder = this.participantRepository
       .createQueryBuilder('participant')
       .leftJoinAndSelect('participant.conversation', 'conversation')
@@ -154,10 +198,10 @@ export class ConversationsService {
       queryBuilder.andWhere('participant.isPinned = :pinned', { pinned });
     }
 
-    // Sort by pinned, then last message time
+    // Sort by pinned first, then oldest messages at top (most recent at bottom)
     queryBuilder.orderBy('participant.isPinned', 'DESC');
-    queryBuilder.addOrderBy('conversation.lastMessageAt', 'DESC');
-    queryBuilder.addOrderBy('conversation.createdAt', 'DESC');
+    queryBuilder.addOrderBy('conversation.lastMessageAt', 'ASC', 'NULLS FIRST');
+    queryBuilder.addOrderBy('conversation.createdAt', 'ASC');
 
     // Pagination
     const skip = (page - 1) * limit;
@@ -514,8 +558,9 @@ export class ConversationsService {
       .leftJoinAndSelect('message.sender', 'sender')
       .leftJoinAndSelect('message.replyTo', 'replyTo')
       .leftJoinAndSelect('replyTo.sender', 'replyToSender')
-      .leftJoinAndSelect('message.reactions', 'reactions')
-      .leftJoinAndSelect('reactions.user', 'reactionUser')
+      // TODO: Add reactions join when MessageReaction entity is implemented
+      // .leftJoinAndSelect('message.reactions', 'reactions')
+      // .leftJoinAndSelect('reactions.user', 'reactionUser')
       .where('message.conversationId = :conversationId', { conversationId })
       .andWhere('message.deletedAt IS NULL');
 
@@ -606,6 +651,89 @@ export class ConversationsService {
           },
         })),
     };
+  }
+
+  /**
+   * Get or create self-conversation (for personal notes/bookmarks)
+   */
+  async getOrCreateSelfConversation(userId: string) {
+    // Check if self-conversation already exists
+    const participant = await this.participantRepository
+      .createQueryBuilder('participant')
+      .leftJoinAndSelect('participant.conversation', 'conversation')
+      .leftJoinAndSelect('conversation.participants', 'participants')
+      .leftJoinAndSelect('participants.user', 'user')
+      .where('participant.userId = :userId', { userId })
+      .andWhere('conversation.type = :type', { type: ConversationType.DIRECT })
+      .andWhere('participant.leftAt IS NULL')
+      .andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('COUNT(cp.id)')
+          .from('conversation_participants', 'cp')
+          .where('cp.conversationId = conversation.id')
+          .andWhere('cp.leftAt IS NULL')
+          .getQuery();
+        return `(${subQuery}) = 1`;
+      })
+      .getOne();
+
+    if (participant) {
+      return {
+        ...participant.conversation,
+        userParticipant: {
+          isMuted: participant.isMuted,
+          isArchived: participant.isArchived,
+          isPinned: participant.isPinned,
+          unreadCount: participant.unreadCount,
+          lastReadMessageId: participant.lastReadMessageId,
+          lastReadAt: participant.lastReadAt,
+          role: participant.role,
+        },
+        participants: participant.conversation.participants
+          .filter((p) => !p.leftAt)
+          .map((p) => ({
+            id: p.id,
+            userId: p.userId,
+            role: p.role,
+            joinedAt: p.joinedAt,
+            user: {
+              id: p.user.id,
+              username: p.user.username,
+              firstName: p.user.firstName,
+              lastName: p.user.lastName,
+              avatarUrl: p.user.avatarUrl,
+              isOnline: p.user.isOnline,
+              presenceStatus: p.user.presenceStatus,
+            },
+          })),
+      };
+    }
+
+    // Create new self-conversation with special name
+    const conversation = this.conversationRepository.create({
+      type: ConversationType.DIRECT,
+      name: 'Notes (You)',
+      description: 'Personal notes and reminders',
+      createdById: userId,
+      isGroup: false,
+      isChannel: false,
+    });
+
+    await this.conversationRepository.save(conversation);
+
+    // Add user as the only participant
+    const selfParticipant = this.participantRepository.create({
+      conversationId: conversation.id,
+      userId,
+      role: UserRole.MEMBER,
+      isPinned: true, // Auto-pin self-conversation
+    });
+
+    await this.participantRepository.save(selfParticipant);
+
+    // Return the newly created self-conversation
+    return this.getConversationById(userId, conversation.id);
   }
 
   /**

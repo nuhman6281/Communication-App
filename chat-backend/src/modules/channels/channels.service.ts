@@ -62,10 +62,10 @@ export class ChannelsService {
 
     const result = await this.channelRepository.query(
       `INSERT INTO channels
-        (name, handle, description, "avatarUrl", "bannerUrl", type, category, "ownerId", "conversationId", "subscriberCount", settings, tags)
+        (name, handle, description, "avatarUrl", "bannerUrl", type, category, "ownerId", "conversationId", "subscriberCount", settings, tags, workspace_id, is_workspace_owned)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-       RETURNING *`,
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       RETURNING id, name, handle, description, "avatarUrl", "bannerUrl", type, category, "ownerId", "conversationId", "subscriberCount", "isVerified", created_at as "createdAt", updated_at as "updatedAt"`,
       [
         createChannelDto.name,
         createChannelDto.handle.toLowerCase(),
@@ -79,6 +79,8 @@ export class ChannelsService {
         1,
         JSON.stringify(settings),
         createChannelDto.tags || [],
+        createChannelDto.workspaceId || null,
+        !!createChannelDto.workspaceId,
       ],
     );
 

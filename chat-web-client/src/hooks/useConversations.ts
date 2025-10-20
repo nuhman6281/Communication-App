@@ -200,3 +200,18 @@ export function useRemoveParticipant() {
     },
   });
 }
+
+/**
+ * Get or create self-conversation (for personal notes/bookmarks)
+ */
+export function useSelfConversation() {
+  return useQuery({
+    queryKey: queryKeys.conversations.self,
+    queryFn: () => conversationsApi.getSelf(),
+    staleTime: Infinity, // Cache forever - self-conversation doesn't change
+    meta: {
+      errorMessage: 'Failed to load self-conversation',
+      showErrorToast: false, // Don't show error toast for self-conversation
+    },
+  });
+}

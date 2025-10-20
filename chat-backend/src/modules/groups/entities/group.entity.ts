@@ -10,6 +10,7 @@ import { BaseEntity } from '@common/entities/base.entity';
 import { User } from '@modules/users/entities/user.entity';
 import { Conversation } from '@modules/conversations/entities/conversation.entity';
 import { GroupMember } from './group-member.entity';
+import { Workspace } from '@modules/workspaces/entities/workspace.entity';
 
 export enum GroupType {
   PUBLIC = 'public',
@@ -26,6 +27,7 @@ export enum GroupPrivacy {
 @Entity('groups')
 @Index(['type', 'isActive'])
 @Index(['createdById'])
+@Index(['workspaceId'])
 export class Group extends BaseEntity {
   @Column({ type: 'varchar', length: 100 })
   name: string;
@@ -66,6 +68,17 @@ export class Group extends BaseEntity {
   @ManyToOne(() => User)
   @JoinColumn({ name: 'createdById' })
   createdBy: User;
+
+  // Workspace Integration (optional - for workspace-owned groups)
+  @Column({ type: 'uuid', nullable: true, name: 'workspace_id' })
+  workspaceId: string | null;
+
+  @ManyToOne(() => Workspace, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'workspace_id' })
+  workspace: Workspace | null;
+
+  @Column({ type: 'boolean', default: false, name: 'is_workspace_owned' })
+  isWorkspaceOwned: boolean;
 
   @OneToMany(() => GroupMember, (member) => member.group)
   members: GroupMember[];

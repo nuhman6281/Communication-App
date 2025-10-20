@@ -1,8 +1,18 @@
+import { useState } from 'react';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
-import { ArrowLeft, Plus, Search, Users, Hash, Lock, Globe } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import { ArrowLeft, Plus, Search, Users, Hash, Lock, Globe, Mail, Link2 } from 'lucide-react';
+import { InviteMemberDialog, GenerateInviteLinkDialog } from './workspace';
+import { useInviteMember, useGenerateInviteLink } from '@/hooks/useWorkspaces';
+import { toast } from 'sonner';
 
 interface WorkspaceViewProps {
   onBack: () => void;
@@ -45,6 +55,29 @@ const mockChannels = [
 ];
 
 export function WorkspaceView({ onBack }: WorkspaceViewProps) {
+  // Dialog state management
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [showInviteLinkDialog, setShowInviteLinkDialog] = useState(false);
+
+  // TODO: Replace with actual workspace ID from props or context
+  const currentWorkspaceId = '1';
+
+  // Invitation hooks
+  const inviteMember = useInviteMember(currentWorkspaceId);
+  const generateInviteLink = useGenerateInviteLink(currentWorkspaceId);
+
+  // Handle invite by email
+  const handleInviteByEmail = async (email: string, role: string) => {
+    await inviteMember.mutateAsync({ email, role });
+    toast.success(`Invitation sent to ${email}`);
+  };
+
+  // Handle generate invite link
+  const handleGenerateInviteLink = async () => {
+    const result = await generateInviteLink.mutateAsync();
+    return result;
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-background">
       {/* Header */}
@@ -157,9 +190,24 @@ export function WorkspaceView({ onBack }: WorkspaceViewProps) {
         <div className="pt-4 border-t border-border">
           <div className="flex items-center justify-between mb-4">
             <h3>Members</h3>
-            <Button size="sm" variant="outline">
-              Invite People
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Invite People
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShowInviteDialog(true)}>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Invite by Email
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowInviteLinkDialog(true)}>
+                  <Link2 className="w-4 h-4 mr-2" />
+                  Generate Invite Link
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="space-y-2">
@@ -191,6 +239,21 @@ export function WorkspaceView({ onBack }: WorkspaceViewProps) {
           </div>
         </div>
       </div>
+
+      {/* Invitation Dialogs */}
+      <InviteMemberDialog
+        open={showInviteDialog}
+        onOpenChange={setShowInviteDialog}
+        workspaceId={currentWorkspaceId}
+        onInvite={handleInviteByEmail}
+      />
+
+      <GenerateInviteLinkDialog
+        open={showInviteLinkDialog}
+        onOpenChange={setShowInviteLinkDialog}
+        workspaceId={currentWorkspaceId}
+        onGenerate={handleGenerateInviteLink}
+      />
     </div>
   );
 }

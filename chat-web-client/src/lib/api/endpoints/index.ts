@@ -17,6 +17,7 @@ export { searchApi } from './search.api';
 export { aiApi } from './ai.api';
 export { webhooksApi } from './webhooks.api';
 export { presenceApi } from './presence.api';
+export { workspacesApi } from './workspaces.api';
 
 // Re-export types for convenience
 export type { ToneType, TranslationLanguage } from './ai.api';

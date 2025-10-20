@@ -3,7 +3,9 @@
  */
 
 import { apiClient } from '../client';
-import type { User } from '@/types/entities.types';
+import { transformPaginatedResponse } from '../utils';
+import type { User, PaginatedResponse } from '@/types/entities.types';
+import type { PaginationParams } from '@/types/api.types';
 
 export const usersApi = {
   getById: async (id: string): Promise<User> => {
@@ -30,9 +32,9 @@ export const usersApi = {
     return response.data;
   },
 
-  searchUsers: async (query: string): Promise<User[]> => {
-    const response = await apiClient.get('/users/search', { params: { q: query } });
-    return response.data;
+  searchUsers: async (params: { query?: string } & PaginationParams): Promise<PaginatedResponse<User>> => {
+    const response = await apiClient.get('/users/search', { params });
+    return transformPaginatedResponse<User>(response.data, 'users');
   },
 
   blockUser: async (userId: string): Promise<void> => {

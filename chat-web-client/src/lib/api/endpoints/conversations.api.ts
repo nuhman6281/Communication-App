@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client';
+import { transformPaginatedResponse } from '../utils';
 import type { CreateConversationRequest, UpdateConversationRequest, PaginationParams } from '@/types/api.types';
 import type { Conversation, PaginatedResponse } from '@/types/entities.types';
 
@@ -13,7 +14,7 @@ export const conversationsApi = {
    */
   getAll: async (params?: PaginationParams): Promise<PaginatedResponse<Conversation>> => {
     const response = await apiClient.get('/conversations', { params });
-    return response.data;
+    return transformPaginatedResponse<Conversation>(response.data, 'conversations');
   },
 
   /**
@@ -21,6 +22,14 @@ export const conversationsApi = {
    */
   getById: async (id: string): Promise<Conversation> => {
     const response = await apiClient.get(`/conversations/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Get or create self-conversation (for personal notes/bookmarks)
+   */
+  getSelf: async (): Promise<Conversation> => {
+    const response = await apiClient.get('/conversations/self');
     return response.data;
   },
 

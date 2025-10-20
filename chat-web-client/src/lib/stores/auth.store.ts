@@ -93,3 +93,11 @@ export const useAuthStore = create<AuthState>()(
 export const useUser = () => useAuthStore((state) => state.user);
 export const useIsAuthenticated = () => useAuthStore((state) => state.isAuthenticated);
 export const useAuthLoading = () => useAuthStore((state) => state.isLoading);
+
+// Listen for logout events from API interceptor
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth:logout', () => {
+    console.log('🚪 Logout event received, clearing auth state');
+    useAuthStore.getState().logout();
+  });
+}

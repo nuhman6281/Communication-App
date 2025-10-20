@@ -56,6 +56,13 @@ export class ConversationsController {
     return this.conversationsService.getUserConversations(user.id, query);
   }
 
+  @Get('self')
+  @ApiOperation({ summary: 'Get or create self-conversation for personal notes' })
+  @ApiResponse({ status: 200, description: 'Self-conversation retrieved or created successfully' })
+  async getSelfConversation(@CurrentUser() user: User) {
+    return this.conversationsService.getOrCreateSelfConversation(user.id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get conversation by ID' })
   @ApiParam({ name: 'id', description: 'Conversation ID' })

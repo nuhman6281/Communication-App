@@ -21,6 +21,7 @@ import { CallsModule } from './modules/calls/calls.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AiModule } from './modules/ai/ai.module';
 import { EmailModule } from './modules/email/email.module';
+import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 
 @Module({
   imports: [
@@ -80,14 +81,7 @@ import { EmailModule } from './modules/email/email.module';
     CallsModule,
     WebhooksModule,
     AiModule,
-    // CallsModule,
-    // WorkspacesModule,
-    // NotificationsModule,
-    // StoriesModule,
-    // SearchModule,
-    // WebhooksModule,
-    // AIModule,
-    // SubscriptionsModule,
+    WorkspacesModule,
   ],
 })
 export class AppModule {}
