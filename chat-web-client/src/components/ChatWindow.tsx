@@ -186,15 +186,17 @@ export function ChatWindow({
     scrollToBottom();
   }, [allMessages.length]);
 
-  // Join conversation room on mount
+  // Join conversation room on mount for real-time message updates
   useEffect(() => {
-    if (conversationId) {
-      socketService.joinRoom(conversationId);
+    if (conversationId && socketService.isConnected()) {
+      console.log('[ChatWindow] Joining conversation:', conversationId);
+      socketService.joinConversation(conversationId);
     }
 
     return () => {
-      if (conversationId) {
-        socketService.leaveRoom(conversationId);
+      if (conversationId && socketService.isConnected()) {
+        console.log('[ChatWindow] Leaving conversation:', conversationId);
+        socketService.leaveConversation(conversationId);
       }
     };
   }, [conversationId]);

@@ -141,24 +141,42 @@ class WebSocketService {
   }
 
   /**
-   * Join room (conversation, group, channel)
+   * Join conversation room (for receiving real-time messages)
    */
-  joinRoom(roomId: string) {
-    this.emit('join_room', { roomId });
+  joinConversation(conversationId: string) {
+    this.emit('conversation:join', { conversationId });
   }
 
   /**
-   * Leave room
+   * Leave conversation room
    */
-  leaveRoom(roomId: string) {
-    this.emit('leave_room', { roomId });
+  leaveConversation(conversationId: string) {
+    this.emit('conversation:leave', { conversationId });
   }
 
   /**
    * Send typing indicator
    */
   sendTyping(conversationId: string, isTyping: boolean) {
-    this.emit('typing', { conversationId, isTyping });
+    if (isTyping) {
+      this.emit('typing:start', { conversationId });
+    } else {
+      this.emit('typing:stop', { conversationId });
+    }
+  }
+
+  /**
+   * @deprecated Use joinConversation instead
+   */
+  joinRoom(roomId: string) {
+    this.joinConversation(roomId);
+  }
+
+  /**
+   * @deprecated Use leaveConversation instead
+   */
+  leaveRoom(roomId: string) {
+    this.leaveConversation(roomId);
   }
 
   /**

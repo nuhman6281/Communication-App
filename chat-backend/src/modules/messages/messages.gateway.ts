@@ -8,7 +8,10 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger, UseGuards, Inject, forwardRef } from '@nestjs/common';
+import { WsJwtGuard } from '@common/guards/ws-jwt.guard';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { MessageReactionDto } from './dto/message-reaction.dto';
@@ -18,8 +21,9 @@ import { MessageReactionDto } from './dto/message-reaction.dto';
     origin: '*', // Configure this properly in production
     credentials: true,
   },
-  namespace: '/messages',
+  // No namespace - using root namespace for simpler connection
 })
+@UseGuards(WsJwtGuard)
 export class MessagesGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
@@ -29,24 +33,79 @@ export class MessagesGateway
   private readonly logger = new Logger(MessagesGateway.name);
   private userSockets = new Map<string, string[]>(); // userId -> [socketIds]
 
-  constructor(private readonly messagesService: MessagesService) {}
+  constructor(
+    @Inject(forwardRef(() => MessagesService))
+    private readonly messagesService: MessagesService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
 
-  handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
+  async handleConnection(client: Socket) {
+    try {
+      this.logger.log(`Client connected: ${client.id}`);
 
-    // Extract user ID from socket handshake (you should implement proper JWT auth)
-    const userId = client.handshake.auth.userId || client.handshake.query.userId;
+      // Manually verify JWT token (guards don't run on lifecycle hooks)
+      const token = this.extractToken(client);
 
-    if (userId) {
-      if (!this.userSockets.has(userId as string)) {
-        this.userSockets.set(userId as string, []);
+      if (!token) {
+        this.logger.warn(`No token provided for socket ${client.id}`);
+        client.disconnect();
+        return;
       }
-      this.userSockets.get(userId as string)?.push(client.id);
 
-      // Join user's personal room
+      // Verify the token
+      const payload = await this.jwtService.verifyAsync(token, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
+
+      // Attach user info to socket
+      client.data.user = {
+        id: payload.sub,
+        email: payload.email,
+        username: payload.username,
+      };
+
+      const userId = payload.sub;
+
+      this.logger.log(`WebSocket authenticated: ${payload.username} (${userId})`);
+
+      // Track user's socket connections
+      if (!this.userSockets.has(userId)) {
+        this.userSockets.set(userId, []);
+      }
+      this.userSockets.get(userId)?.push(client.id);
+
+      // Join user's personal room for direct messages/notifications
       client.join(`user:${userId}`);
-      this.logger.log(`User ${userId} connected with socket ${client.id}`);
+
+      this.logger.log(`User ${userId} (${client.data.user.username}) connected with socket ${client.id}`);
+
+      // Emit connection success
+      client.emit('connected', { userId, socketId: client.id });
+    } catch (error) {
+      this.logger.error(`Error in handleConnection: ${error.message}`);
+      client.disconnect();
     }
+  }
+
+  private extractToken(client: Socket): string | null {
+    // Try multiple token locations
+    const authToken = client.handshake.auth?.token;
+    if (authToken) {
+      return authToken;
+    }
+
+    const queryToken = client.handshake.query?.token as string;
+    if (queryToken) {
+      return queryToken;
+    }
+
+    const authHeader = client.handshake.headers?.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      return authHeader.substring(7);
+    }
+
+    return null;
   }
 
   handleDisconnect(client: Socket) {
@@ -126,11 +185,20 @@ export class MessagesGateway
   @SubscribeMessage('typing:start')
   async handleTypingStart(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: string; userId: string; username: string },
+    @MessageBody() data: { conversationId: string },
   ) {
+    const userId = client.data.user.id;
+    const username = client.data.user.username;
+
+    // Broadcast typing start to other users in conversation
     client
       .to(`conversation:${data.conversationId}`)
-      .emit('typing:user', { userId: data.userId, username: data.username, isTyping: true });
+      .emit('typing:start', {
+        userId,
+        username,
+        conversationId: data.conversationId,
+        avatarUrl: null, // Can be added from user data
+      });
 
     return { success: true };
   }
@@ -138,11 +206,17 @@ export class MessagesGateway
   @SubscribeMessage('typing:stop')
   async handleTypingStop(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: string; userId: string; username: string },
+    @MessageBody() data: { conversationId: string },
   ) {
+    const userId = client.data.user.id;
+
+    // Broadcast typing stop to other users in conversation
     client
       .to(`conversation:${data.conversationId}`)
-      .emit('typing:user', { userId: data.userId, username: data.username, isTyping: false });
+      .emit('typing:stop', {
+        userId,
+        conversationId: data.conversationId,
+      });
 
     return { success: true };
   }
@@ -168,8 +242,9 @@ export class MessagesGateway
       // Broadcast reaction to conversation
       this.server
         .to(`conversation:${message.conversationId}`)
-        .emit('message:reaction:new', {
+        .emit('message:reaction', {
           messageId: data.messageId,
+          conversationId: message.conversationId,
           reaction,
         });
 

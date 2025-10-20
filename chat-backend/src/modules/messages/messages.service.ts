@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, IsNull, In } from 'typeorm';
@@ -18,6 +20,7 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { GetMessagesDto } from './dto/get-messages.dto';
 import { MessageReactionDto } from './dto/message-reaction.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
+import { MessagesGateway } from './messages.gateway';
 
 @Injectable()
 export class MessagesService {
@@ -36,6 +39,8 @@ export class MessagesService {
     private readonly conversationRepository: Repository<Conversation>,
     @InjectRepository(ConversationParticipant)
     private readonly participantRepository: Repository<ConversationParticipant>,
+    @Inject(forwardRef(() => MessagesGateway))
+    private readonly messagesGateway: MessagesGateway,
   ) {}
 
   /**
@@ -86,10 +91,19 @@ export class MessagesService {
     });
 
     // Load message with sender info
-    return this.messageRepository.findOne({
+    const savedMessage = await this.messageRepository.findOne({
       where: { id: message.id },
       relations: ['sender', 'replyTo'],
     });
+
+    // Emit WebSocket event to notify other users in real-time
+    this.messagesGateway.emitToConversation(
+      conversationId,
+      'message:new',
+      savedMessage,
+    );
+
+    return savedMessage;
   }
 
   /**
@@ -241,10 +255,19 @@ export class MessagesService {
 
     await this.messageRepository.save(message);
 
-    return this.messageRepository.findOne({
+    const updatedMessage = await this.messageRepository.findOne({
       where: { id: messageId },
       relations: ['sender', 'replyTo'],
     });
+
+    // Emit WebSocket event to notify other users in real-time
+    this.messagesGateway.emitToConversation(
+      message.conversationId,
+      'message:updated',
+      updatedMessage,
+    );
+
+    return updatedMessage;
   }
 
   /**
@@ -268,6 +291,13 @@ export class MessagesService {
     message.content = undefined; // Remove content for privacy
 
     await this.messageRepository.save(message);
+
+    // Emit WebSocket event to notify other users in real-time
+    this.messagesGateway.emitToConversation(
+      message.conversationId,
+      'message:deleted',
+      { messageId, conversationId: message.conversationId },
+    );
 
     return { message: 'Message deleted successfully' };
   }
@@ -498,6 +528,13 @@ export class MessagesService {
         where: { id: forwardedMessage.id },
         relations: ['sender'],
       });
+
+      // Emit WebSocket event for the forwarded message
+      this.messagesGateway.emitToConversation(
+        targetConversationId,
+        'message:new',
+        completeMessage,
+      );
 
       forwardedMessages.push(completeMessage);
     }
