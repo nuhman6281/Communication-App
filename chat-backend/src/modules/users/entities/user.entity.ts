@@ -2,6 +2,13 @@ import { Entity, Column, Index, OneToMany } from 'typeorm';
 import { BaseEntity } from '@common/entities/base.entity';
 import { PresenceStatus } from '@common/constants';
 
+export enum SubscriptionTier {
+  FREE = 'free',
+  PREMIUM = 'premium',
+  BUSINESS = 'business',
+  ENTERPRISE = 'enterprise',
+}
+
 @Entity('users')
 @Index(['email'], { unique: true })
 @Index(['username'], { unique: true })
@@ -61,6 +68,23 @@ export class User extends BaseEntity {
 
   @Column({ type: 'varchar', length: 255, name: 'oauth_provider_id', nullable: true })
   oauthProviderId?: string;
+
+  @Column({
+    type: 'enum',
+    enum: SubscriptionTier,
+    name: 'subscription_tier',
+    default: SubscriptionTier.FREE,
+  })
+  subscriptionTier: SubscriptionTier;
+
+  @Column({ type: 'timestamp', name: 'subscription_expires_at', nullable: true })
+  subscriptionExpiresAt?: Date;
+
+  @Column({ type: 'varchar', length: 255, name: 'stripe_customer_id', nullable: true })
+  stripeCustomerId?: string;
+
+  @Column({ type: 'varchar', length: 255, name: 'stripe_subscription_id', nullable: true })
+  stripeSubscriptionId?: string;
 
   // Relationships will be added as modules are implemented
   // @OneToMany(() => Message, (message) => message.sender)

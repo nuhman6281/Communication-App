@@ -21,14 +21,35 @@ interface OpenAIResponse {
 
 @Injectable()
 export class AiService {
-  private openaiApiKey: string | undefined;
-  private openaiApiUrl = 'https://api.openai.com/v1/chat/completions';
+  private aiProvider: string;
+
+  // OpenAI Configuration (commented out, kept for future use)
+  // private openaiApiKey: string | undefined;
+  // private openaiApiUrl = 'https://api.openai.com/v1/chat/completions';
+
+  // Groq Configuration (FREE alternative)
+  private groqApiKey: string | undefined;
+  private groqApiUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
   constructor(private configService: ConfigService) {
-    this.openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
+    this.aiProvider = this.configService.get<string>('AI_PROVIDER') || 'groq';
 
-    if (!this.openaiApiKey) {
-      console.warn('⚠️  OPENAI_API_KEY not configured. AI features will not work.');
+    // OpenAI setup (commented out)
+    // this.openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
+    // if (!this.openaiApiKey) {
+    //   console.warn('⚠️  OPENAI_API_KEY not configured. AI features will not work.');
+    // }
+
+    // Groq setup (active)
+    this.groqApiKey = this.configService.get<string>('GROQ_API_KEY');
+
+    if (this.aiProvider === 'groq') {
+      if (!this.groqApiKey) {
+        console.warn('⚠️  GROQ_API_KEY not configured. Get your free key at https://console.groq.com');
+        console.warn('⚠️  AI features will not work until you add GROQ_API_KEY to .env file');
+      } else {
+        console.log('✅ Groq AI provider initialized (FREE tier)');
+      }
     }
   }
 
@@ -245,30 +266,62 @@ export class AiService {
     this.validateApiKey();
 
     try {
-      const response = await fetch('https://api.openai.com/v1/moderations', {
+      // Use Groq AI for content moderation (OpenAI moderation API not available with Groq)
+      const moderationPrompt = `Analyze the following content for harmful material.
+Respond ONLY with a JSON object in this exact format:
+{"flagged": true/false, "categories": ["category1", "category2"]}
+
+Categories to check: hate, harassment, violence, self-harm, sexual, spam
+
+Content to analyze: "${content}"
+
+JSON response:`;
+
+      const apiUrl = this.aiProvider === 'groq' ? this.groqApiUrl : this.groqApiUrl;
+      const apiKey = this.aiProvider === 'groq' ? this.groqApiKey : this.groqApiKey;
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.openaiApiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({ input: content }),
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a content moderation AI. Respond ONLY with valid JSON.',
+            },
+            {
+              role: 'user',
+              content: moderationPrompt,
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 100,
+        }),
       });
 
       if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.statusText}`);
+        throw new Error(`Moderation API error: ${response.statusText}`);
       }
 
       const data: any = await response.json();
-      const result = data.results[0];
+      const aiResponse = data.choices[0].message.content;
 
-      const flaggedCategories = Object.keys(result.categories).filter(
-        (key) => result.categories[key],
-      );
+      // Parse AI response
+      const jsonMatch = aiResponse.match(/\{.*\}/s);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        return {
+          flagged: result.flagged || false,
+          categories: result.categories || [],
+        };
+      }
 
-      return {
-        flagged: result.flagged,
-        categories: flaggedCategories,
-      };
+      // Return safe default if parsing fails
+      return { flagged: false, categories: [] };
     } catch (error) {
       console.error('Content moderation failed:', error);
       // Return safe default if moderation fails
@@ -277,28 +330,103 @@ export class AiService {
   }
 
   /**
-   * Call OpenAI API
+   * Call AI API (supports both OpenAI and Groq)
    */
   private async callOpenAI(payload: any): Promise<OpenAIResponse> {
     try {
-      const response = await fetch(this.openaiApiUrl, {
+      // Determine which API to use
+      let apiUrl: string;
+      let apiKey: string | undefined;
+
+      if (this.aiProvider === 'groq') {
+        apiUrl = this.groqApiUrl;
+        apiKey = this.groqApiKey;
+
+        // Groq uses Llama models, map OpenAI models to Groq equivalents
+        if (payload.model === 'gpt-3.5-turbo' || payload.model === 'gpt-4') {
+          payload.model = 'llama-3.3-70b-versatile'; // Groq's best free model (updated model)
+        }
+      } else {
+        // OpenAI (commented out for now)
+        throw new BadRequestException(
+          'OpenAI provider is currently disabled. Using Groq (free) instead. Change AI_PROVIDER=groq in .env if not already set.'
+        );
+        // apiUrl = this.openaiApiUrl;
+        // apiKey = this.openaiApiKey;
+      }
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.openaiApiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(`OpenAI API error: ${error.error?.message || response.statusText}`);
+        const errorMessage = error.error?.message || response.statusText;
+        const errorType = error.error?.type;
+        const errorCode = error.error?.code;
+
+        console.error('OpenAI API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorMessage,
+          type: errorType,
+          code: errorCode,
+        });
+
+        // Provide user-friendly error messages based on provider
+        if (this.aiProvider === 'groq') {
+          if (errorCode === 'invalid_api_key' || response.status === 401) {
+            throw new BadRequestException(
+              'Invalid Groq API key. Please check GROQ_API_KEY in .env file. Get a free key at https://console.groq.com'
+            );
+          }
+
+          if (errorCode === 'rate_limit_exceeded' || response.status === 429) {
+            throw new BadRequestException(
+              'Groq rate limit exceeded (30 requests/minute on free tier). Please wait a minute and try again.'
+            );
+          }
+
+          throw new BadRequestException(`Groq AI error: ${errorMessage}`);
+        } else {
+          // OpenAI error messages (kept for when switching back)
+          if (errorCode === 'insufficient_quota') {
+            throw new BadRequestException(
+              'OpenAI API quota exceeded. Please add credits at https://platform.openai.com/settings/organization/billing'
+            );
+          }
+
+          if (errorCode === 'invalid_api_key') {
+            throw new BadRequestException('Invalid OpenAI API key. Please check your configuration.');
+          }
+
+          throw new Error(`OpenAI API error: ${errorMessage}`);
+        }
       }
 
       return await response.json();
     } catch (error) {
-      console.error('OpenAI API call failed:', error);
-      throw new BadRequestException('AI service is currently unavailable');
+      console.error(`${this.aiProvider.toUpperCase()} API call failed:`, error);
+
+      // Provide more specific error messages
+      if (error.message && (error.message.includes('API error') || error.message.includes('AI error'))) {
+        throw new BadRequestException(error.message);
+      }
+
+      if (this.aiProvider === 'groq') {
+        throw new BadRequestException(
+          'Groq AI service temporarily unavailable. Please check your GROQ_API_KEY in .env and try again. Get a free key at https://console.groq.com'
+        );
+      } else {
+        throw new BadRequestException(
+          'AI service currently unavailable. Please check the API configuration and try again.'
+        );
+      }
     }
   }
 
@@ -328,10 +456,22 @@ export class AiService {
    * Validate API key exists
    */
   private validateApiKey(): void {
-    if (!this.openaiApiKey) {
+    if (this.aiProvider === 'groq') {
+      if (!this.groqApiKey || this.groqApiKey === 'your-groq-api-key-here') {
+        throw new BadRequestException(
+          'Groq API key not configured. Get your FREE API key at https://console.groq.com and add it to .env as GROQ_API_KEY',
+        );
+      }
+    } else {
+      // OpenAI validation (commented out)
       throw new BadRequestException(
-        'OpenAI API key not configured. Please contact administrator.',
+        'OpenAI provider is disabled. Please use Groq (free) by setting AI_PROVIDER=groq in .env',
       );
+      // if (!this.openaiApiKey) {
+      //   throw new BadRequestException(
+      //     'OpenAI API key not configured. Please contact administrator.',
+      //   );
+      // }
     }
   }
 }

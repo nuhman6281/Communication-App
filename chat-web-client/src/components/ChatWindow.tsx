@@ -14,6 +14,7 @@ import {
   Video,
   MoreVertical,
   Loader2,
+  Pin,
 } from "lucide-react";
 import { useMessages, useSendMessage, useConversation, useAddReaction, useRemoveReaction, useUpdateMessage, useDeleteMessage, usePinMessage, useUnpinMessage } from "@/hooks";
 import { useAuthStore } from "@/lib/stores";
@@ -24,6 +25,7 @@ import { Skeleton } from "./ui/skeleton";
 import { MessageComposer } from "./MessageComposer";
 import { MessageBubble as MessageBubbleComponent } from "./MessageBubble";
 import { ForwardMessageDialog } from "./ForwardMessageDialog";
+import { PinnedMessagesPanel } from "./PinnedMessagesPanel";
 
 interface ChatWindowProps {
   conversationId: string;
@@ -49,6 +51,7 @@ export function ChatWindow({
     id: string;
     content: string;
   } | null>(null);
+  const [showPinnedPanel, setShowPinnedPanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -270,9 +273,11 @@ export function ChatWindow({
   };
 
   return (
-    <div className="h-full flex flex-col bg-background">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-background sticky top-0 z-10">
+    <div className="h-full flex bg-background">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-background sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -317,6 +322,15 @@ export function ChatWindow({
         </div>
 
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => setShowPinnedPanel(!showPinnedPanel)}
+            title="View pinned messages"
+          >
+            <Pin className={`w-5 h-5 ${showPinnedPanel ? 'text-primary fill-current' : ''}`} />
+          </Button>
           <Button variant="ghost" size="icon" className="h-9 w-9">
             <Phone className="w-5 h-5" />
           </Button>
@@ -414,6 +428,7 @@ export function ChatWindow({
                   createdAt: msg.createdAt,
                   isEdited: msg.isEdited,
                   isDeleted: msg.isDeleted,
+                  isPinned: (msg as any).isPinned,
                   replyTo: msg.replyTo ? {
                     id: msg.replyTo.id,
                     content: msg.replyTo.content,
@@ -526,14 +541,34 @@ export function ChatWindow({
       />
 
       {/* Forward Message Dialog */}
-      {forwardingMessage && (
-        <ForwardMessageDialog
-          open={!!forwardingMessage}
-          onOpenChange={(open) => {
-            if (!open) setForwardingMessage(null);
+        {forwardingMessage && (
+          <ForwardMessageDialog
+            open={!!forwardingMessage}
+            onOpenChange={(open) => {
+              if (!open) setForwardingMessage(null);
+            }}
+            messageId={forwardingMessage.id}
+            messagePreview={forwardingMessage.content}
+          />
+        )}
+      </div>
+
+      {/* Pinned Messages Panel */}
+      {showPinnedPanel && (
+        <PinnedMessagesPanel
+          conversationId={conversationId}
+          onClose={() => setShowPinnedPanel(false)}
+          onMessageClick={(messageId) => {
+            // TODO: Scroll to message in chat
+            console.log('Scroll to message:', messageId);
           }}
-          messageId={forwardingMessage.id}
-          messagePreview={forwardingMessage.content}
+          onUnpin={async (messageId) => {
+            try {
+              await unpinMessageMutation.mutateAsync(messageId);
+            } catch (error) {
+              console.error('Failed to unpin message:', error);
+            }
+          }}
         />
       )}
     </div>

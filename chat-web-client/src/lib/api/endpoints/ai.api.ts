@@ -12,13 +12,14 @@ export const aiApi = {
   /**
    * Generate smart reply suggestions (Free tier)
    */
-  getSmartReplies: async (messageId: string, count?: number): Promise<{
-    suggestions: string[];
-    context: string;
+  getSmartReplies: async (message: string, count?: number, context?: string): Promise<{
+    replies: string[];
+    count: number;
   }> => {
     const response = await apiClient.post('/ai/smart-replies', {
-      messageId,
+      message,
       count: count || 3,
+      context,
     });
     return response.data;
   },
@@ -28,15 +29,17 @@ export const aiApi = {
    */
   enhanceMessage: async (
     content: string,
-    tone: ToneType
+    tone: ToneType,
+    context?: string
   ): Promise<{
     original: string;
     enhanced: string;
-    tone: ToneType;
+    tone: string;
   }> => {
     const response = await apiClient.post('/ai/enhance', {
-      content,
+      message: content,
       tone,
+      context,
     });
     return response.data;
   },
@@ -50,13 +53,12 @@ export const aiApi = {
     sourceLanguage?: TranslationLanguage
   ): Promise<{
     original: string;
-    translated: string;
-    sourceLanguage: string;
+    translation: string;
     targetLanguage: string;
-    confidence: number;
+    detectedLanguage: string;
   }> => {
     const response = await apiClient.post('/ai/translate', {
-      content,
+      message: content,
       targetLanguage,
       sourceLanguage,
     });
@@ -101,18 +103,19 @@ export const aiApi = {
    * Summarize conversation or messages (Premium tier)
    */
   summarize: async (
-    conversationId: string,
-    messageIds?: string[]
+    text: string,
+    type?: 'brief' | 'detailed' | 'bullet_points' | 'action_items',
+    context?: string
   ): Promise<{
     summary: string;
-    keyPoints: string[];
-    actionItems: string[];
-    participants: string[];
-    messageCount: number;
+    type: string;
+    originalLength: number;
+    summaryLength: number;
   }> => {
     const response = await apiClient.post('/ai/summarize', {
-      conversationId,
-      messageIds,
+      text,
+      type,
+      context,
     });
     return response.data;
   },

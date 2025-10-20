@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthScreen } from './components/AuthScreen';
 import { ChatInterface } from './components/ChatInterface';
+import { EmailVerification } from './components/EmailVerification';
 import { useAuthStore, useUIStore } from './lib/stores';
 import { socketService, setupWebSocketEvents, cleanupWebSocketEvents } from './lib/websocket';
 import { startTypingCleanup } from './lib/stores/presence.store';
@@ -45,10 +47,21 @@ export default function App() {
     }
   }, [isAuthenticated]);
 
-  // Show auth screen if not authenticated
-  if (!isAuthenticated) {
-    return <AuthScreen onAuthenticate={() => {}} />;
-  }
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Email verification route - accessible without authentication */}
+        <Route path="/verify-email" element={<EmailVerification />} />
 
-  return <ChatInterface />;
+        {/* Main app routes */}
+        <Route
+          path="/"
+          element={isAuthenticated ? <ChatInterface /> : <AuthScreen onAuthenticate={() => {}} />}
+        />
+
+        {/* Catch all - redirect to home */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }

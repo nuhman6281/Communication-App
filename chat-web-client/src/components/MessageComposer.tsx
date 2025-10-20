@@ -1,4 +1,4 @@
-import {
+import React, {
   useState,
   useRef,
   useEffect,
@@ -35,6 +35,8 @@ import {
   MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MessageContentRenderer } from "./MessageContentRenderer";
+import { AIAssistant } from "./AIAssistant";
 
 interface MessageComposerProps {
   onSendMessage: (
@@ -51,12 +53,14 @@ interface MessageComposerProps {
   editingMessage?: {
     id: string;
     content: string;
+    metadata?: any;
   } | null;
   onCancelReply?: () => void;
   onCancelEdit?: () => void;
   placeholder?: string;
   disabled?: boolean;
   initialValue?: string;
+  lastReceivedMessage?: string; // For AI smart replies
 }
 
 export function MessageComposer({
@@ -69,12 +73,14 @@ export function MessageComposer({
   placeholder = "Type a message...",
   disabled = false,
   initialValue,
+  lastReceivedMessage,
 }: MessageComposerProps) {
   const [message, setMessage] = useState(initialValue || "");
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showFormatting, setShowFormatting] = useState(false);
+  const [showAIAssistant, setShowAIAssistant] = useState(true); // Toggle for AI assistant
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -284,21 +290,36 @@ export function MessageComposer({
 
       {/* Edit indicator */}
       {editingMessage && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
-          <div className="flex-1 text-sm">
-            <span className="text-amber-700 dark:text-amber-400 font-medium">Editing message</span>
-            <p className="text-amber-600 dark:text-amber-500 truncate text-xs">
-              {editingMessage.content}
-            </p>
+        <div className="px-4 py-3 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-amber-700 dark:text-amber-400 font-medium text-sm">
+              Editing message
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 hover:bg-amber-100 dark:hover:bg-amber-900/50 ml-auto"
+              onClick={onCancelEdit}
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 hover:bg-amber-100 dark:hover:bg-amber-900/50"
-            onClick={onCancelEdit}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="max-h-32 overflow-y-auto">
+            <MessageContentRenderer
+              message={{
+                id: editingMessage.id,
+                content: editingMessage.content,
+                senderId: "",
+                senderName: "",
+                messageType: "text",
+                createdAt: new Date(),
+                metadata: editingMessage.metadata || undefined,
+              }}
+              isOwnMessage={false}
+              showFullContent={true}
+              className="text-xs"
+            />
+          </div>
         </div>
       )}
 
@@ -386,12 +407,12 @@ export function MessageComposer({
                 </TooltipTrigger>
                 <TooltipContent>Add emoji</TooltipContent>
               </Tooltip>
-              <PopoverContent className="w-64 p-2">
-                <div className="grid grid-cols-5 gap-2">
+              <PopoverContent className="w-auto p-3">
+                <div className="flex gap-2">
                   {quickEmojis.map((emoji) => (
                     <button
                       key={emoji}
-                      className="text-2xl hover:bg-muted rounded p-1 transition-colors"
+                      className="text-2xl hover:bg-muted rounded-lg p-2 transition-colors hover:scale-110"
                       onClick={() => insertEmoji(emoji)}
                     >
                       {emoji}
@@ -418,7 +439,11 @@ export function MessageComposer({
             disabled={disabled}
             className="w-full resize-none bg-muted rounded-lg px-4 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary min-h-[40px] max-h-[200px]"
             rows={1}
-            style={{ paddingTop: '10px', paddingBottom: '10px', lineHeight: '20px' }}
+            style={{
+              paddingTop: "10px",
+              paddingBottom: "10px",
+              lineHeight: "20px",
+            }}
           />
 
           {/* Formatting toolbar */}
@@ -514,6 +539,15 @@ export function MessageComposer({
         accept="video/*"
         onChange={handleFileSelect}
       />
+
+      {/* AI Assistant */}
+      {showAIAssistant && !editingMessage && (
+        <AIAssistant
+          message={message}
+          onEnhance={(enhanced) => setMessage(enhanced)}
+          lastReceivedMessage={lastReceivedMessage}
+        />
+      )}
     </div>
   );
 }

@@ -140,7 +140,7 @@ export class MessagesService {
 
     // Load reactions for each message
     const messageIds = messages.map((m) => m.id);
-    let reactions = [];
+    let reactions: MessageReaction[] = [];
 
     if (messageIds.length > 0) {
       reactions = await this.reactionRepository.find({
@@ -149,11 +149,19 @@ export class MessagesService {
       });
     }
 
-    // Attach reactions to messages
+    // Load pinned messages for this conversation
+    const pinnedMessages = await this.pinnedMessageRepository.find({
+      where: { conversationId },
+      select: ['messageId'],
+    });
+    const pinnedMessageIds = new Set(pinnedMessages.map((pm) => pm.messageId));
+
+    // Attach reactions and isPinned to messages
     const messagesWithReactions = messages.map((message) => {
       const messageReactions = reactions.filter((r) => r.messageId === message.id);
-      // Manually assign reactions to the entity
+      // Manually assign reactions and isPinned to the entity
       (message as any).reactions = messageReactions;
+      (message as any).isPinned = pinnedMessageIds.has(message.id);
       return message;
     });
 
@@ -532,6 +540,40 @@ export class MessagesService {
       editCount: history.length,
       history,
     };
+  }
+
+  /**
+   * Pin a message (simplified - auto-detects conversation)
+   */
+  async pinMessageSimple(userId: string, messageId: string) {
+    // Get message to find conversation
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Call the full pinMessage method with conversationId
+    return this.pinMessage(userId, message.conversationId, messageId);
+  }
+
+  /**
+   * Unpin a message (simplified - auto-detects conversation)
+   */
+  async unpinMessageSimple(userId: string, messageId: string) {
+    // Get message to find conversation
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Call the full unpinMessage method with conversationId
+    return this.unpinMessage(userId, message.conversationId, messageId);
   }
 
   /**

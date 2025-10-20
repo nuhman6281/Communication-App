@@ -95,4 +95,12 @@ export const messagesApi = {
     const response = await apiClient.get(`/messages/${id}/thread`, { params });
     return transformPaginatedResponse<Message>(response.data, 'messages');
   },
+
+  /**
+   * Get pinned messages for a conversation
+   */
+  getPinned: async (conversationId: string): Promise<any> => {
+    const response = await apiClient.get(`/messages/conversations/${conversationId}/pinned`);
+    return response.data;
+  },
 };

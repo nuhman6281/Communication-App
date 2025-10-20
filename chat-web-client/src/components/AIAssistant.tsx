@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
@@ -16,43 +16,77 @@ import {
   Smile,
   Lightbulb,
   Crown,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
+import { useEnhanceMessage, useTranslate, useSmartReplies, useSubscription, useRefreshProfile } from '@/hooks';
+import { AIFeature } from '@/lib/utils/subscription';
+import { toast } from 'sonner';
+import type { ToneType, TranslationLanguage } from '@/lib/api/endpoints';
 
 interface AIAssistantProps {
   message: string;
   onEnhance: (enhancedMessage: string) => void;
-  isPremium?: boolean;
+  lastReceivedMessage?: string; // For smart replies context
 }
 
-export function AIAssistant({ message, onEnhance, isPremium = false }: AIAssistantProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [smartReplies, setSmartReplies] = useState<string[]>([
-    "That sounds great!",
-    "Let me check and get back to you",
-    "Thanks for the update",
-  ]);
+export function AIAssistant({ message, onEnhance, lastReceivedMessage }: AIAssistantProps) {
+  const subscription = useSubscription();
+  const { refresh: refreshProfile, isRefreshing } = useRefreshProfile();
+  const enhanceMutation = useEnhanceMessage();
+  const translateMutation = useTranslate();
 
-  const enhanceMessage = async (style: 'professional' | 'casual' | 'formal' | 'concise') => {
-    if (!isPremium && style !== 'concise') {
-      // Show premium prompt
+  // Smart replies for the last received message (not current message being composed)
+  const { data: smartRepliesData } = useSmartReplies(
+    lastReceivedMessage || '',
+    undefined // context
+  );
+
+  const smartReplies = smartRepliesData?.replies || [];
+  const isLoading = enhanceMutation.isPending || translateMutation.isPending;
+
+  // Check feature access
+  const hasEnhancement = subscription.hasAccess(AIFeature.MESSAGE_ENHANCEMENT);
+  const hasTranslation = subscription.hasAccess(AIFeature.BASIC_TRANSLATION);
+  const hasSmartReplies = subscription.hasAccess(AIFeature.SMART_REPLIES);
+
+  const enhanceMessage = async (tone: ToneType) => {
+    // Check premium for restricted tones
+    if (!hasEnhancement && (tone === 'professional' || tone === 'casual' || tone === 'formal')) {
+      toast.error('Premium feature. Please upgrade to use tone enhancement.');
       return;
     }
 
-    setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      const enhanced = `[${style}] ${message}`;
-      onEnhance(enhanced);
-      setIsLoading(false);
-    }, 1000);
+    if (!message.trim()) {
+      toast.error('Please enter a message to enhance');
+      return;
+    }
+
+    try {
+      const result = await enhanceMutation.mutateAsync({ content: message, tone });
+      onEnhance(result.enhanced);
+    } catch (error: any) {
+      console.error('Enhancement failed:', error);
+      // Error toast is handled by mutation meta
+    }
   };
 
-  const translate = async (language: string) => {
-    setIsLoading(true);
-    setTimeout(() => {
-      onEnhance(`[Translated to ${language}] ${message}`);
-      setIsLoading(false);
-    }, 1000);
+  const translate = async (language: TranslationLanguage) => {
+    if (!message.trim()) {
+      toast.error('Please enter a message to translate');
+      return;
+    }
+
+    try {
+      const result = await translateMutation.mutateAsync({
+        content: message,
+        targetLanguage: language,
+      });
+      onEnhance(result.translation);
+    } catch (error: any) {
+      console.error('Translation failed:', error);
+      // Error toast is handled by mutation meta
+    }
   };
 
   return (
@@ -60,57 +94,58 @@ export function AIAssistant({ message, onEnhance, isPremium = false }: AIAssista
       {/* AI Writing Assistant */}
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="sm" disabled={!message.trim()}>
+          <Button variant="ghost" size="sm" disabled={!message.trim() || isLoading}>
             <Wand2 className="w-4 h-4 mr-2" />
-            Enhance
-            {!isPremium && <Crown className="w-3 h-3 ml-1 text-amber-500" />}
+            {isLoading ? 'Enhancing...' : 'Enhance'}
+            {!subscription.hasPremiumFeatures && <Crown className="w-3 h-3 ml-1 text-amber-500" />}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-64">
           <div className="space-y-2">
-            <h4 className="text-sm mb-2">Enhance with AI</h4>
+            <h4 className="text-sm mb-2 font-medium">Enhance with AI</h4>
             <Button
               variant="outline"
               size="sm"
               className="w-full justify-start"
               onClick={() => enhanceMessage('professional')}
-              disabled={isLoading || !isPremium}
+              disabled={isLoading || !hasEnhancement}
             >
-              <Sparkles className="w-4 h-4 mr-2" />
+              {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
               Professional
-              {!isPremium && <Crown className="w-3 h-3 ml-auto text-amber-500" />}
+              {!hasEnhancement && <Crown className="w-3 h-3 ml-auto text-amber-500" />}
             </Button>
             <Button
               variant="outline"
               size="sm"
               className="w-full justify-start"
               onClick={() => enhanceMessage('casual')}
-              disabled={isLoading || !isPremium}
+              disabled={isLoading || !hasEnhancement}
             >
-              <Smile className="w-4 h-4 mr-2" />
+              {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Smile className="w-4 h-4 mr-2" />}
               Casual
-              {!isPremium && <Crown className="w-3 h-3 ml-auto text-amber-500" />}
+              {!hasEnhancement && <Crown className="w-3 h-3 ml-auto text-amber-500" />}
             </Button>
             <Button
               variant="outline"
               size="sm"
               className="w-full justify-start"
               onClick={() => enhanceMessage('formal')}
-              disabled={isLoading || !isPremium}
+              disabled={isLoading || !hasEnhancement}
             >
-              <FileText className="w-4 h-4 mr-2" />
+              {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileText className="w-4 h-4 mr-2" />}
               Formal
-              {!isPremium && <Crown className="w-3 h-3 ml-auto text-amber-500" />}
+              {!hasEnhancement && <Crown className="w-3 h-3 ml-auto text-amber-500" />}
             </Button>
             <Button
               variant="outline"
               size="sm"
               className="w-full justify-start"
-              onClick={() => enhanceMessage('concise')}
-              disabled={isLoading}
+              onClick={() => enhanceMessage('friendly')}
+              disabled={isLoading || !hasEnhancement}
             >
-              <Lightbulb className="w-4 h-4 mr-2" />
-              Make Concise
+              {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Lightbulb className="w-4 h-4 mr-2" />}
+              Friendly
+              {!hasEnhancement && <Crown className="w-3 h-3 ml-auto text-amber-500" />}
             </Button>
           </div>
         </PopoverContent>
@@ -119,24 +154,30 @@ export function AIAssistant({ message, onEnhance, isPremium = false }: AIAssista
       {/* Translate */}
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="sm" disabled={!message.trim()}>
-            <Languages className="w-4 h-4 mr-2" />
-            Translate
+          <Button variant="ghost" size="sm" disabled={!message.trim() || isLoading}>
+            <Languages className="w-4 w-4 mr-2" />
+            {isLoading ? 'Translating...' : 'Translate'}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-48">
           <div className="space-y-1">
             <h4 className="text-sm mb-2">Translate to</h4>
-            {['Spanish', 'French', 'German', 'Japanese', 'Chinese'].map((lang) => (
+            {[
+              { label: 'Spanish', code: 'es' as TranslationLanguage },
+              { label: 'French', code: 'fr' as TranslationLanguage },
+              { label: 'German', code: 'de' as TranslationLanguage },
+              { label: 'Japanese', code: 'ja' as TranslationLanguage },
+              { label: 'Chinese', code: 'zh' as TranslationLanguage },
+            ].map(({ label, code }) => (
               <Button
-                key={lang}
+                key={code}
                 variant="ghost"
                 size="sm"
                 className="w-full justify-start"
-                onClick={() => translate(lang)}
+                onClick={() => translate(code)}
                 disabled={isLoading}
               >
-                {lang}
+                {label}
               </Button>
             ))}
           </div>
@@ -144,7 +185,7 @@ export function AIAssistant({ message, onEnhance, isPremium = false }: AIAssista
       </Popover>
 
       {/* Smart Replies */}
-      {smartReplies.length > 0 && !message.trim() && (
+      {smartReplies.length > 0 && !message.trim() && hasSmartReplies && (
         <div className="flex-1 flex flex-wrap gap-2">
           <span className="text-xs text-muted-foreground flex items-center">
             <MessageSquare className="w-3 h-3 mr-1" />
@@ -163,14 +204,33 @@ export function AIAssistant({ message, onEnhance, isPremium = false }: AIAssista
         </div>
       )}
 
-      {!isPremium && (
-        <div className="ml-auto">
+      {/* Subscription Status & Refresh */}
+      <div className="ml-auto flex items-center gap-2">
+        {/* Current Tier Badge */}
+        <Badge variant="outline" className="text-xs">
+          {subscription.tierName}
+        </Badge>
+
+        {/* Refresh Profile Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={refreshProfile}
+          disabled={isRefreshing}
+          className="h-7 px-2"
+          title="Refresh subscription status"
+        >
+          <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+        </Button>
+
+        {/* Upgrade Badge - Only show for users without premium features */}
+        {!subscription.hasPremiumFeatures && (
           <Badge className="premium-gradient text-white">
             <Crown className="w-3 h-3 mr-1" />
-            Upgrade for AI features
+            Upgrade to Premium for more AI features
           </Badge>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

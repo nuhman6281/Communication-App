@@ -277,3 +277,18 @@ export function useMessageThread(messageId: string | null, params?: PaginationPa
     },
   });
 }
+
+/**
+ * Get pinned messages for a conversation
+ */
+export function usePinnedMessages(conversationId: string | null) {
+  return useQuery({
+    queryKey: ['messages', 'pinned', conversationId],
+    queryFn: () => messagesApi.getPinned(conversationId!),
+    enabled: !!conversationId,
+    staleTime: 30 * 1000,
+    meta: {
+      errorMessage: 'Failed to load pinned messages',
+    },
+  });
+}

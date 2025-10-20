@@ -174,6 +174,34 @@ export class MessagesController {
 
   // ==================== Pinned Messages ====================
 
+  @Post(':id/pin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Pin a message' })
+  @ApiParam({ name: 'id', description: 'Message ID' })
+  @ApiResponse({ status: 200, description: 'Message pinned successfully' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  async pinMessageSimple(
+    @CurrentUser() user: User,
+    @Param('id') messageId: string,
+  ) {
+    return this.messagesService.pinMessageSimple(user.id, messageId);
+  }
+
+  @Delete(':id/pin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unpin a message' })
+  @ApiParam({ name: 'id', description: 'Message ID' })
+  @ApiResponse({ status: 200, description: 'Message unpinned successfully' })
+  @ApiResponse({ status: 404, description: 'Pinned message not found' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  async unpinMessageSimple(
+    @CurrentUser() user: User,
+    @Param('id') messageId: string,
+  ) {
+    return this.messagesService.unpinMessageSimple(user.id, messageId);
+  }
+
   @Post('conversations/:conversationId/pin/:messageId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Pin a message in a conversation' })

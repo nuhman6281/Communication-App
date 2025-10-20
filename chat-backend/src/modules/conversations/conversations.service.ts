@@ -19,6 +19,7 @@ import { GetConversationsDto } from './dto/get-conversations.dto';
 import { ConversationType, UserRole } from '@common/constants';
 import { Message } from '@modules/messages/entities/message.entity';
 import { MessageReaction } from '@modules/messages/entities/message-reaction.entity';
+import { PinnedMessage } from '@modules/messages/entities/pinned-message.entity';
 import { ChannelSubscriber, ChannelSubscriberStatus } from '@modules/channels/entities/channel-subscriber.entity';
 import { Channel } from '@modules/channels/entities/channel.entity';
 
@@ -37,6 +38,8 @@ export class ConversationsService {
     private readonly messageRepository: Repository<Message>,
     @InjectRepository(MessageReaction)
     private readonly reactionRepository: Repository<MessageReaction>,
+    @InjectRepository(PinnedMessage)
+    private readonly pinnedMessageRepository: Repository<PinnedMessage>,
     @InjectRepository(ChannelSubscriber)
     private readonly channelSubscriberRepository: Repository<ChannelSubscriber>,
     @InjectRepository(Channel)
@@ -587,7 +590,7 @@ export class ConversationsService {
 
     // Load reactions for each message
     const messageIds = messages.map((m) => m.id);
-    let reactions = [];
+    let reactions: MessageReaction[] = [];
 
     if (messageIds.length > 0) {
       reactions = await this.reactionRepository.find({
@@ -596,11 +599,19 @@ export class ConversationsService {
       });
     }
 
-    // Attach reactions to messages
+    // Load pinned messages for this conversation
+    const pinnedMessages = await this.pinnedMessageRepository.find({
+      where: { conversationId },
+      select: ['messageId'],
+    });
+    const pinnedMessageIds = new Set(pinnedMessages.map((pm) => pm.messageId));
+
+    // Attach reactions and isPinned to messages
     const messagesWithReactions = messages.map((message) => {
       const messageReactions = reactions.filter((r) => r.messageId === message.id);
-      // Manually assign reactions to the entity
+      // Manually assign reactions and isPinned to the entity
       (message as any).reactions = messageReactions;
+      (message as any).isPinned = pinnedMessageIds.has(message.id);
       return message;
     });
 

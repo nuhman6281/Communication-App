@@ -180,9 +180,16 @@ export function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         className="pl-10"
                         value={registerData.username}
                         onChange={(e) => setRegisterData({ ...registerData, username: e.target.value })}
+                        pattern="^[a-zA-Z0-9_-]+$"
+                        title="Username can only contain letters, numbers, underscores, and hyphens"
+                        minLength={3}
+                        maxLength={50}
                         required
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Only letters, numbers, underscores (_), and hyphens (-). 3-50 characters.
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="register-email">Email</Label>

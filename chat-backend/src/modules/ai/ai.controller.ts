@@ -1,6 +1,7 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
+import { PremiumGuard } from '@common/guards/premium.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { AiService } from './ai.service';
 import { ChatCompletionDto } from './dto/chat-completion.dto';
@@ -12,13 +13,14 @@ import { SummarizeDto } from './dto/summarize.dto';
 @ApiTags('AI Features')
 @ApiBearerAuth()
 @Controller('ai')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PremiumGuard) // All AI features require Premium subscription
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
   @Post('chat')
-  @ApiOperation({ summary: 'Generic AI chat completion' })
+  @ApiOperation({ summary: 'Generic AI chat completion (Premium Only)' })
   @ApiResponse({ status: 200, description: 'Chat completion response' })
+  @ApiResponse({ status: 403, description: 'Premium subscription required' })
   async chatCompletion(
     @CurrentUser('sub') userId: string,
     @Body() chatCompletionDto: ChatCompletionDto,
@@ -31,8 +33,9 @@ export class AiController {
   }
 
   @Post('smart-replies')
-  @ApiOperation({ summary: 'Generate smart reply suggestions (Free Tier)' })
+  @ApiOperation({ summary: 'Generate smart reply suggestions (Premium Only)' })
   @ApiResponse({ status: 200, description: 'Smart replies generated' })
+  @ApiResponse({ status: 403, description: 'Premium subscription required' })
   async generateSmartReplies(
     @CurrentUser('sub') userId: string,
     @Body() smartReplyDto: SmartReplyDto,
@@ -45,13 +48,13 @@ export class AiController {
   }
 
   @Post('enhance')
-  @ApiOperation({ summary: 'Enhance message with tone adjustment (Premium Tier)' })
+  @ApiOperation({ summary: 'Enhance message with tone adjustment (Premium Only)' })
   @ApiResponse({ status: 200, description: 'Message enhanced successfully' })
+  @ApiResponse({ status: 403, description: 'Premium subscription required' })
   async enhanceMessage(
     @CurrentUser('sub') userId: string,
     @Body() enhanceMessageDto: EnhanceMessageDto,
   ) {
-    // TODO: Add premium tier check here
     const enhanced = await this.aiService.enhanceMessage(enhanceMessageDto);
     return {
       original: enhanceMessageDto.message,
@@ -61,8 +64,9 @@ export class AiController {
   }
 
   @Post('translate')
-  @ApiOperation({ summary: 'Translate message to target language (Free Tier)' })
+  @ApiOperation({ summary: 'Translate message to target language (Premium Only)' })
   @ApiResponse({ status: 200, description: 'Message translated successfully' })
+  @ApiResponse({ status: 403, description: 'Premium subscription required' })
   async translateMessage(
     @CurrentUser('sub') userId: string,
     @Body() translateMessageDto: TranslateMessageDto,
@@ -77,13 +81,13 @@ export class AiController {
   }
 
   @Post('summarize')
-  @ApiOperation({ summary: 'Summarize text or conversation (Premium Tier)' })
+  @ApiOperation({ summary: 'Summarize text or conversation (Premium Only)' })
   @ApiResponse({ status: 200, description: 'Text summarized successfully' })
+  @ApiResponse({ status: 403, description: 'Premium subscription required' })
   async summarize(
     @CurrentUser('sub') userId: string,
     @Body() summarizeDto: SummarizeDto,
   ) {
-    // TODO: Add premium tier check here
     const summary = await this.aiService.summarize(summarizeDto);
     return {
       summary,
@@ -94,8 +98,9 @@ export class AiController {
   }
 
   @Post('moderate')
-  @ApiOperation({ summary: 'Moderate content for spam/abuse' })
+  @ApiOperation({ summary: 'Moderate content for spam/abuse (Premium Only)' })
   @ApiResponse({ status: 200, description: 'Content moderation result' })
+  @ApiResponse({ status: 403, description: 'Premium subscription required' })
   async moderateContent(
     @CurrentUser('sub') userId: string,
     @Body('content') content: string,

@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { User } from '@/types/entities.types';
+import { usersApi } from '@/lib/api/endpoints/users.api';
 
 interface AuthState {
   // State
@@ -19,6 +20,7 @@ interface AuthState {
   setAuth: (user: User, accessToken: string, refreshToken: string) => void;
   updateUser: (user: Partial<User>) => void;
   updateTokens: (accessToken: string, refreshToken: string) => void;
+  refreshUser: () => Promise<void>;
   logout: () => void;
   setLoading: (isLoading: boolean) => void;
 }
@@ -59,6 +61,22 @@ export const useAuthStore = create<AuthState>()(
         localStorage.setItem('refreshToken', refreshToken);
 
         set({ accessToken, refreshToken });
+      },
+
+      refreshUser: async () => {
+        set({ isLoading: true });
+        try {
+          const userData = await usersApi.getMe();
+
+          set((state) => ({
+            user: userData,
+            isLoading: false,
+          }));
+        } catch (error) {
+          console.error('Failed to refresh user:', error);
+          set({ isLoading: false });
+          throw error;
+        }
       },
 
       logout: () => {

@@ -22,6 +22,10 @@ export interface User {
   lastSeen: string;
   presenceStatus: PresenceStatus;
   mfaEnabled: boolean;
+  subscriptionTier: SubscriptionTier;
+  subscriptionExpiresAt: string | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -31,6 +35,13 @@ export enum PresenceStatus {
   AWAY = 'away',
   DO_NOT_DISTURB = 'do_not_disturb',
   OFFLINE = 'offline',
+}
+
+export enum SubscriptionTier {
+  FREE = 'free',
+  PREMIUM = 'premium',
+  BUSINESS = 'business',
+  ENTERPRISE = 'enterprise',
 }
 
 // ============================================================================
