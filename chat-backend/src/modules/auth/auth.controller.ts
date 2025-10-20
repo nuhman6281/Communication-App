@@ -9,6 +9,7 @@ import {
   Req,
   Ip,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -129,5 +130,58 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Invalid MFA code or MFA not enabled' })
   async disableMfa(@CurrentUser() user: User, @Body() verifyMfaDto: VerifyMfaDto) {
     return this.authService.disableMfa(user.id, verifyMfaDto.code);
+  }
+
+  // ==================== OAUTH ENDPOINTS ====================
+
+  @Public()
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Login with Google' })
+  async googleLogin() {
+    // Passport will handle this
+  }
+
+  @Public()
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Google OAuth callback' })
+  async googleCallback(@Req() req: any, @Ip() ip: string) {
+    const userAgent = req.headers['user-agent'];
+    return this.authService.oauthLogin(req.user, userAgent, ip);
+  }
+
+  @Public()
+  @Get('github')
+  @UseGuards(AuthGuard('github'))
+  @ApiOperation({ summary: 'Login with GitHub' })
+  async githubLogin() {
+    // Passport will handle this
+  }
+
+  @Public()
+  @Get('github/callback')
+  @UseGuards(AuthGuard('github'))
+  @ApiOperation({ summary: 'GitHub OAuth callback' })
+  async githubCallback(@Req() req: any, @Ip() ip: string) {
+    const userAgent = req.headers['user-agent'];
+    return this.authService.oauthLogin(req.user, userAgent, ip);
+  }
+
+  @Public()
+  @Get('microsoft')
+  @UseGuards(AuthGuard('microsoft'))
+  @ApiOperation({ summary: 'Login with Microsoft' })
+  async microsoftLogin() {
+    // Passport will handle this
+  }
+
+  @Public()
+  @Get('microsoft/callback')
+  @UseGuards(AuthGuard('microsoft'))
+  @ApiOperation({ summary: 'Microsoft OAuth callback' })
+  async microsoftCallback(@Req() req: any, @Ip() ip: string) {
+    const userAgent = req.headers['user-agent'];
+    return this.authService.oauthLogin(req.user, userAgent, ip);
   }
 }

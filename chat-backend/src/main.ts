@@ -29,15 +29,15 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  // API Versioning
+  // Global prefix (without version - versioning will add it)
+  const apiPrefix = configService.get('API_PREFIX') || 'api';
+  app.setGlobalPrefix(apiPrefix);
+
+  // API Versioning (adds /v1, /v2, etc.)
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: '1',
   });
-
-  // Global prefix
-  const apiPrefix = configService.get('API_PREFIX') || 'api/v1';
-  app.setGlobalPrefix(apiPrefix);
 
   // Logging
   if (configService.get('NODE_ENV') !== 'test') {

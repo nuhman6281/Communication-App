@@ -20,6 +20,7 @@ import { SearchModule } from './modules/search/search.module';
 import { CallsModule } from './modules/calls/calls.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AiModule } from './modules/ai/ai.module';
+import { EmailModule } from './modules/email/email.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { AiModule } from './modules/ai/ai.module';
     DatabaseModule,
 
     // Feature Modules
+    EmailModule,
     AuthModule,
     UsersModule,
     ConversationsModule,

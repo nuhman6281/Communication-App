@@ -21,6 +21,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { EmailService } from '@modules/email/email.service';
 
 @Injectable()
 export class AuthService {
@@ -35,6 +36,7 @@ export class AuthService {
     private readonly passwordResetRepository: Repository<PasswordReset>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly emailService: EmailService,
   ) {}
 
   /**
@@ -73,8 +75,12 @@ export class AuthService {
     // Generate email verification token
     const verificationToken = await this.createEmailVerificationToken(user);
 
-    // TODO: Send verification email
-    // await this.emailService.sendVerificationEmail(user.email, verificationToken.token);
+    // Send verification email
+    await this.emailService.sendVerificationEmail(
+      user.email,
+      `${user.firstName} ${user.lastName}`,
+      verificationToken.token,
+    );
 
     return {
       message: 'Registration successful. Please check your email to verify your account.',
@@ -216,6 +222,12 @@ export class AuthService {
     verification.isUsed = true;
     await this.emailVerificationRepository.save(verification);
 
+    // Send welcome email
+    await this.emailService.sendWelcomeEmail(
+      verification.user.email,
+      `${verification.user.firstName} ${verification.user.lastName}`,
+    );
+
     return { message: 'Email verified successfully' };
   }
 
@@ -235,8 +247,12 @@ export class AuthService {
     // Generate reset token
     const resetToken = await this.createPasswordResetToken(user);
 
-    // TODO: Send password reset email
-    // await this.emailService.sendPasswordResetEmail(user.email, resetToken.token);
+    // Send password reset email
+    await this.emailService.sendPasswordResetEmail(
+      user.email,
+      `${user.firstName} ${user.lastName}`,
+      resetToken.token,
+    );
 
     return {
       message: 'If the email exists, a password reset link has been sent',
@@ -379,6 +395,62 @@ export class AuthService {
     return { message: 'MFA disabled successfully' };
   }
 
+  /**
+   * OAuth login (Google, GitHub, Microsoft)
+   */
+  async oauthLogin(oauthUser: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    avatar?: string;
+    provider: string;
+    providerId: string;
+  }, userAgent?: string, ipAddress?: string) {
+    // Check if user exists with this OAuth provider
+    let user = await this.userRepository.findOne({
+      where: { email: oauthUser.email },
+    });
+
+    if (user) {
+      // User exists - update OAuth info if needed
+      if (!user.oauthProvider || user.oauthProvider !== oauthUser.provider) {
+        user.oauthProvider = oauthUser.provider;
+        user.oauthProviderId = oauthUser.providerId;
+        await this.userRepository.save(user);
+      }
+    } else {
+      // Create new user from OAuth data
+      const username = this.generateUsernameFromEmail(oauthUser.email);
+
+      user = this.userRepository.create({
+        email: oauthUser.email,
+        username,
+        firstName: oauthUser.firstName,
+        lastName: oauthUser.lastName,
+        avatarUrl: oauthUser.avatar,
+        oauthProvider: oauthUser.provider,
+        oauthProviderId: oauthUser.providerId,
+        isVerified: true, // OAuth users are pre-verified
+        passwordHash: '', // OAuth users don't need password
+      });
+
+      await this.userRepository.save(user);
+    }
+
+    // Generate tokens
+    const tokens = await this.generateTokens(user, userAgent, ipAddress);
+
+    // Update last seen
+    user.lastSeen = new Date();
+    user.isOnline = true;
+    await this.userRepository.save(user);
+
+    return {
+      user: this.sanitizeUser(user),
+      ...tokens,
+    };
+  }
+
   // ==================== HELPER METHODS ====================
 
   /**
@@ -466,6 +538,15 @@ export class AuthService {
     });
 
     return this.passwordResetRepository.save(reset);
+  }
+
+  /**
+   * Generate unique username from email
+   */
+  private generateUsernameFromEmail(email: string): string {
+    const baseUsername = email.split('@')[0].toLowerCase();
+    const randomSuffix = Math.floor(Math.random() * 10000);
+    return `${baseUsername}${randomSuffix}`;
   }
 
   /**

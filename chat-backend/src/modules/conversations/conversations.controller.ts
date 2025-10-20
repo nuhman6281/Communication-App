@@ -180,4 +180,26 @@ export class ConversationsController {
   ) {
     return this.conversationsService.markAsRead(user.id, conversationId, messageId);
   }
+
+  // ==================== Messages ====================
+
+  @Get(':id/messages')
+  @ApiOperation({ summary: 'Get messages in conversation' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({ status: 200, description: 'Messages retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Not a participant in conversation' })
+  @ApiResponse({ status: 404, description: 'Conversation not found' })
+  async getConversationMessages(
+    @CurrentUser() user: User,
+    @Param('id') conversationId: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('beforeMessageId') beforeMessageId?: string,
+  ) {
+    return this.conversationsService.getConversationMessages(user.id, conversationId, {
+      page: page || 1,
+      limit: limit || 50,
+      beforeMessageId,
+    });
+  }
 }

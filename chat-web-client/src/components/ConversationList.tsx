@@ -4,13 +4,16 @@ import { Button } from './ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Search, Plus, MoreVertical, Users, Hash, Volume2 } from 'lucide-react';
+import { Search, Plus, MoreVertical, Users, Hash, Volume2, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import { useConversations } from '@/hooks';
+import { Skeleton } from './ui/skeleton';
+import { formatDistanceToNow } from 'date-fns';
 
 interface ConversationListProps {
   selectedId: string | null;
@@ -19,82 +22,51 @@ interface ConversationListProps {
   onSearch?: () => void;
 }
 
-const mockConversations = [
-  {
-    id: '1',
-    type: 'direct',
-    name: 'Sarah Johnson',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
-    lastMessage: 'That sounds great! See you tomorrow',
-    timestamp: '2m ago',
-    unread: 2,
-    online: true,
-  },
-  {
-    id: '2',
-    type: 'group',
-    name: 'Design Team',
-    avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=DT',
-    lastMessage: 'Alex: Can we schedule a meeting?',
-    timestamp: '15m ago',
-    unread: 0,
-    members: 12,
-  },
-  {
-    id: '3',
-    type: 'direct',
-    name: 'Michael Chen',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Michael',
-    lastMessage: 'Thanks for the update!',
-    timestamp: '1h ago',
-    unread: 0,
-    online: true,
-  },
-  {
-    id: '4',
-    type: 'group',
-    name: 'Project Alpha',
-    avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=PA',
-    lastMessage: 'You: Here are the latest changes',
-    timestamp: '2h ago',
-    unread: 5,
-    members: 8,
-  },
-  {
-    id: '5',
-    type: 'channel',
-    name: 'announcements',
-    avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=AN',
-    lastMessage: 'New company policy updates',
-    timestamp: '3h ago',
-    unread: 1,
-    subscribers: 256,
-  },
-  {
-    id: '6',
-    type: 'direct',
-    name: 'Emma Wilson',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Emma',
-    lastMessage: 'Perfect, let me know when you\'re ready',
-    timestamp: '1d ago',
-    unread: 0,
-    online: false,
-  },
-];
-
 export function ConversationList({ selectedId, onSelect, onCreateGroup, onSearch }: ConversationListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'direct' | 'groups' | 'channels'>('all');
 
-  const filteredConversations = mockConversations.filter((conv) => {
-    const matchesSearch = conv.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter =
-      filter === 'all' ||
-      (filter === 'direct' && conv.type === 'direct') ||
-      (filter === 'groups' && conv.type === 'group') ||
-      (filter === 'channels' && conv.type === 'channel');
-    return matchesSearch && matchesFilter;
+  // Fetch conversations from API
+  const { data, isLoading, error } = useConversations({
+    type: filter === 'all' ? undefined : filter === 'direct' ? 'direct' : filter === 'groups' ? 'group' : 'channel',
+    search: searchQuery || undefined,
   });
+
+  // Format timestamp helper
+  const formatTimestamp = (date: string) => {
+    try {
+      return formatDistanceToNow(new Date(date), { addSuffix: true });
+    } catch {
+      return 'recently';
+    }
+  };
+
+  // Get conversation name helper
+  const getConversationName = (conversation: any) => {
+    if (conversation.type === 'direct') {
+      // For direct conversations, get the other participant's name
+      return conversation.participants?.[0]?.username || 'Unknown User';
+    }
+    return conversation.name || 'Unnamed';
+  };
+
+  // Get conversation avatar helper
+  const getConversationAvatar = (conversation: any) => {
+    if (conversation.type === 'direct') {
+      return conversation.participants?.[0]?.avatarUrl;
+    }
+    return conversation.avatarUrl;
+  };
+
+  // Get online status for direct conversations
+  const isOnline = (conversation: any) => {
+    if (conversation.type === 'direct') {
+      return conversation.participants?.[0]?.isOnline || false;
+    }
+    return false;
+  };
+
+  const filteredConversations = data?.items || [];
 
   const getConversationIcon = (type: string) => {
     if (type === 'group') return <Users className="w-3 h-3" />;
@@ -152,70 +124,94 @@ export function ConversationList({ selectedId, onSelect, onCreateGroup, onSearch
 
       {/* Conversations List */}
       <div className="flex-1 overflow-y-auto">
-        {filteredConversations.length === 0 ? (
+        {isLoading ? (
+          <div className="p-4 space-y-4">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <Skeleton className="w-12 h-12 rounded-full flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+            <Search className="w-12 h-12 mb-2 opacity-50" />
+            <p className="text-red-500">Failed to load conversations</p>
+            <p className="text-xs mt-1">{error.message}</p>
+          </div>
+        ) : filteredConversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
             <Search className="w-12 h-12 mb-2 opacity-50" />
             <p>No conversations found</p>
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {filteredConversations.map((conversation) => (
-              <button
-                key={conversation.id}
-                onClick={() => onSelect(conversation.id)}
-                className={`w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left ${
-                  selectedId === conversation.id ? 'bg-muted' : ''
-                }`}
-              >
-                <div className="relative flex-shrink-0">
-                  <Avatar className="w-12 h-12">
-                    <AvatarImage src={conversation.avatar} />
-                    <AvatarFallback>{conversation.name.slice(0, 2)}</AvatarFallback>
-                  </Avatar>
-                  {conversation.online && conversation.type === 'direct' && (
-                    <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background"></div>
-                  )}
-                </div>
+            {filteredConversations.map((conversation) => {
+              const convName = getConversationName(conversation);
+              const convAvatar = getConversationAvatar(conversation);
+              const convOnline = isOnline(conversation);
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-1.5">
-                      {getConversationIcon(conversation.type) && (
-                        <span className="text-muted-foreground">
-                          {getConversationIcon(conversation.type)}
-                        </span>
-                      )}
-                      <span className="truncate">{conversation.name}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                      {conversation.timestamp}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm text-muted-foreground truncate">
-                      {conversation.lastMessage}
-                    </p>
-                    {conversation.unread > 0 && (
-                      <Badge className="shrink-0 bg-blue-600 hover:bg-blue-700">
-                        {conversation.unread}
-                      </Badge>
+              return (
+                <button
+                  key={conversation.id}
+                  onClick={() => onSelect(conversation.id)}
+                  className={`w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left ${
+                    selectedId === conversation.id ? 'bg-muted' : ''
+                  }`}
+                >
+                  <div className="relative flex-shrink-0">
+                    <Avatar className="w-12 h-12">
+                      <AvatarImage src={convAvatar} />
+                      <AvatarFallback>{convName.slice(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    {convOnline && conversation.type === 'direct' && (
+                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background"></div>
                     )}
                   </div>
 
-                  {conversation.type === 'group' && conversation.members && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {conversation.members} members
-                    </p>
-                  )}
-                  {conversation.type === 'channel' && conversation.subscribers && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {conversation.subscribers} subscribers
-                    </p>
-                  )}
-                </div>
-              </button>
-            ))}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        {getConversationIcon(conversation.type) && (
+                          <span className="text-muted-foreground">
+                            {getConversationIcon(conversation.type)}
+                          </span>
+                        )}
+                        <span className="truncate font-medium">{convName}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                        {formatTimestamp(conversation.updatedAt)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm text-muted-foreground truncate">
+                        {conversation.lastMessage?.content || 'No messages yet'}
+                      </p>
+                      {conversation.unreadCount > 0 && (
+                        <Badge className="shrink-0 bg-blue-600 hover:bg-blue-700">
+                          {conversation.unreadCount}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {conversation.type === 'group' && conversation.memberCount && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {conversation.memberCount} members
+                      </p>
+                    )}
+                    {conversation.type === 'channel' && conversation.subscriberCount && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {conversation.subscriberCount} subscribers
+                      </p>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

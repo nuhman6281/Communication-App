@@ -11,6 +11,10 @@ import { EmailVerification } from './entities/email-verification.entity';
 import { PasswordReset } from './entities/password-reset.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
+import { GithubStrategy } from './strategies/github.strategy';
+import { MicrosoftStrategy } from './strategies/microsoft.strategy';
+import { EmailModule } from '@modules/email/email.module';
 
 @Module({
   imports: [
@@ -26,9 +30,17 @@ import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
       }),
       inject: [ConfigService],
     }),
+    EmailModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RefreshTokenStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    RefreshTokenStrategy,
+    GoogleStrategy,
+    GithubStrategy,
+    MicrosoftStrategy,
+  ],
   exports: [AuthService, JwtStrategy, PassportModule, JwtModule],
 })
 export class AuthModule {}

@@ -6,6 +6,7 @@ import { Conversation } from './entities/conversation.entity';
 import { ConversationParticipant } from './entities/conversation-participant.entity';
 import { User } from '@modules/users/entities/user.entity';
 import { BlockedUser } from '@modules/users/entities/blocked-users.entity';
+import { Message } from '@modules/messages/entities/message.entity';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { BlockedUser } from '@modules/users/entities/blocked-users.entity';
       ConversationParticipant,
       User,
       BlockedUser,
+      Message,
     ]),
   ],
   controllers: [ConversationsController],

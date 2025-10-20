@@ -7,7 +7,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, MoreThan, LessThan } from 'typeorm';
+import { Repository, In, MoreThan, LessThan, Brackets } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Story } from './entities/story.entity';
 import { StoryView } from './entities/story-view.entity';
@@ -104,18 +104,25 @@ export class StoriesService {
 
     // Check privacy settings
     query.andWhere(
-      `(
-        story.privacy = 'public' OR
-        (story.privacy = 'custom' AND :currentUserId = ANY(COALESCE(story.customViewers, ARRAY[]::uuid[]))) OR
-        (story.privacy = 'friends')
-      )`,
-      { currentUserId },
+      new Brackets((qb) => {
+        qb.where('story.privacy = :publicPrivacy', { publicPrivacy: 'public' })
+          .orWhere(
+            new Brackets((customQb) => {
+              customQb
+                .where('story.privacy = :customPrivacy', { customPrivacy: 'custom' })
+                .andWhere(':currentUserId = ANY(story.customViewers)', { currentUserId });
+            }),
+          )
+          .orWhere('story.privacy = :friendsPrivacy', { friendsPrivacy: 'friends' });
+      }),
     );
 
-    // Exclude blocked viewers
+    // Exclude blocked viewers - skip if blockedViewers is NULL, otherwise check if user is NOT in the array
     query.andWhere(
-      '(story.blockedViewers IS NULL OR NOT(:currentUserId = ANY(COALESCE(story.blockedViewers, ARRAY[]::uuid[]))))',
-      { currentUserId },
+      new Brackets((qb) => {
+        qb.where('story.blockedViewers IS NULL')
+          .orWhere('NOT(:currentUserId = ANY(story.blockedViewers))', { currentUserId });
+      }),
     );
 
     query

@@ -17,6 +17,7 @@ import { AddParticipantDto } from './dto/add-participant.dto';
 import { UpdateParticipantDto } from './dto/update-participant.dto';
 import { GetConversationsDto } from './dto/get-conversations.dto';
 import { ConversationType, UserRole } from '@common/constants';
+import { Message } from '@modules/messages/entities/message.entity';
 
 @Injectable()
 export class ConversationsService {
@@ -29,6 +30,8 @@ export class ConversationsService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(BlockedUser)
     private readonly blockedUserRepository: Repository<BlockedUser>,
+    @InjectRepository(Message)
+    private readonly messageRepository: Repository<Message>,
   ) {}
 
   /**
@@ -189,13 +192,11 @@ export class ConversationsService {
     }));
 
     return {
-      conversations,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      items: conversations,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -486,6 +487,68 @@ export class ConversationsService {
     await this.participantRepository.save(participant);
 
     return { message: 'Marked as read' };
+  }
+
+  /**
+   * Get messages in conversation
+   */
+  async getConversationMessages(
+    userId: string,
+    conversationId: string,
+    query: { page: number; limit: number; beforeMessageId?: string },
+  ) {
+    // Verify user is participant
+    const participant = await this.participantRepository.findOne({
+      where: { conversationId, userId, leftAt: IsNull() },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException('Not a participant in this conversation');
+    }
+
+    const { page, limit, beforeMessageId } = query;
+
+    // Build query
+    const queryBuilder = this.messageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.replyTo', 'replyTo')
+      .leftJoinAndSelect('replyTo.sender', 'replyToSender')
+      .leftJoinAndSelect('message.reactions', 'reactions')
+      .leftJoinAndSelect('reactions.user', 'reactionUser')
+      .where('message.conversationId = :conversationId', { conversationId })
+      .andWhere('message.deletedAt IS NULL');
+
+    // Pagination with beforeMessageId (for infinite scroll)
+    if (beforeMessageId) {
+      const beforeMessage = await this.messageRepository.findOne({
+        where: { id: beforeMessageId },
+      });
+      if (beforeMessage) {
+        queryBuilder.andWhere('message.createdAt < :beforeTime', {
+          beforeTime: beforeMessage.createdAt,
+        });
+      }
+    }
+
+    // Order by most recent first
+    queryBuilder.orderBy('message.createdAt', 'DESC');
+
+    // Apply pagination
+    const skip = (page - 1) * limit;
+    queryBuilder.skip(skip).take(limit);
+
+    const [messages, total] = await queryBuilder.getManyAndCount();
+
+    return {
+      messages: messages.reverse(), // Reverse to show oldest first in UI
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   // ==================== Helper Methods ====================

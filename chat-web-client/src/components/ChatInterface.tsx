@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { ConversationList } from './ConversationList';
 import { ChatWindow } from './ChatWindow';
@@ -10,15 +10,28 @@ import { WorkspaceView } from './WorkspaceView';
 import { GroupCreation } from './GroupCreation';
 import { NotificationsPanel } from './NotificationsPanel';
 import { GlobalSearch } from './GlobalSearch';
+import { useConversations } from '@/hooks';
 
 type View = 'chat' | 'profile' | 'settings' | 'video-call' | 'stories' | 'workspace' | 'create-group';
 
 export function ChatInterface() {
   const [currentView, setCurrentView] = useState<View>('chat');
-  const [selectedConversation, setSelectedConversation] = useState<string | null>('1');
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [showConversationList, setShowConversationList] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+
+  // Fetch conversations to auto-select the first one
+  const { data: conversationsData } = useConversations({});
+
+  // Auto-select first conversation when data loads
+  useEffect(() => {
+    if (conversationsData?.items && conversationsData.items.length > 0 && !selectedConversation) {
+      const firstConversation = conversationsData.items[0];
+      console.log('[ChatInterface] Auto-selecting first conversation:', firstConversation.id);
+      setSelectedConversation(firstConversation.id);
+    }
+  }, [conversationsData, selectedConversation]);
 
   const renderMainContent = () => {
     switch (currentView) {

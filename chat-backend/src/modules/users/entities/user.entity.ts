@@ -56,6 +56,12 @@ export class User extends BaseEntity {
   @Column({ type: 'boolean', name: 'mfa_enabled', default: false })
   mfaEnabled: boolean;
 
+  @Column({ type: 'varchar', length: 50, name: 'oauth_provider', nullable: true })
+  oauthProvider?: string;
+
+  @Column({ type: 'varchar', length: 255, name: 'oauth_provider_id', nullable: true })
+  oauthProviderId?: string;
+
   // Relationships will be added as modules are implemented
   // @OneToMany(() => Message, (message) => message.sender)
   // messages: Message[];
