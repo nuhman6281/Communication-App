@@ -125,7 +125,7 @@ export function PinnedMessagesPanel({
                   {/* Message Content */}
                   <div className="pl-10">
                     <div className="text-sm break-words line-clamp-4">
-                      <MessageContentRenderer content={message.content} />
+                      <MessageContentRenderer message={message} />
                     </div>
 
                     {/* Message metadata */}

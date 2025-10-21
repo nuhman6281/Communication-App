@@ -349,10 +349,23 @@ export class MessagesService {
 
     await this.reactionRepository.save(reaction);
 
-    return this.reactionRepository.findOne({
+    const savedReaction = await this.reactionRepository.findOne({
       where: { id: reaction.id },
       relations: ['user'],
     });
+
+    // Emit WebSocket event to notify all users in conversation in real-time
+    this.messagesGateway.emitToConversation(
+      message.conversationId,
+      'message:reaction:added',
+      {
+        messageId,
+        conversationId: message.conversationId,
+        reaction: savedReaction,
+      },
+    );
+
+    return savedReaction;
   }
 
   /**
@@ -367,7 +380,26 @@ export class MessagesService {
       throw new NotFoundException('Reaction not found');
     }
 
+    // Get message to find conversationId before removing reaction
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
     await this.reactionRepository.remove(reaction);
+
+    // Emit WebSocket event to notify all users in conversation in real-time
+    if (message) {
+      this.messagesGateway.emitToConversation(
+        message.conversationId,
+        'message:reaction:removed',
+        {
+          messageId,
+          conversationId: message.conversationId,
+          userId,
+          emoji,
+        },
+      );
+    }
 
     return { message: 'Reaction removed successfully' };
   }
@@ -407,6 +439,18 @@ export class MessagesService {
     });
 
     await this.readRepository.save(read);
+
+    // Emit WebSocket event to notify message sender in real-time
+    this.messagesGateway.emitToUser(
+      message.senderId,
+      'message:read:receipt',
+      {
+        messageId,
+        userId,
+        conversationId: message.conversationId,
+        readAt: read.readAt,
+      },
+    );
 
     return read;
   }
@@ -654,10 +698,23 @@ export class MessagesService {
 
     await this.pinnedMessageRepository.save(pinnedMessage);
 
-    return this.pinnedMessageRepository.findOne({
+    const savedPin = await this.pinnedMessageRepository.findOne({
       where: { id: pinnedMessage.id },
       relations: ['message', 'pinnedBy'],
     });
+
+    // Emit WebSocket event to notify all users in conversation in real-time
+    this.messagesGateway.emitToConversation(
+      conversationId,
+      'message:pinned',
+      {
+        conversationId,
+        messageId,
+        pinnedMessage: savedPin,
+      },
+    );
+
+    return savedPin;
   }
 
   /**
@@ -686,6 +743,16 @@ export class MessagesService {
     }
 
     await this.pinnedMessageRepository.remove(pinnedMessage);
+
+    // Emit WebSocket event to notify all users in conversation in real-time
+    this.messagesGateway.emitToConversation(
+      conversationId,
+      'message:unpinned',
+      {
+        conversationId,
+        messageId,
+      },
+    );
 
     return { message: 'Message unpinned successfully' };
   }
