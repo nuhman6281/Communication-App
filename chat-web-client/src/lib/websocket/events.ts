@@ -145,20 +145,21 @@ export function setupWebSocketEvents() {
   // Call Events
   // ============================================================================
 
-  socketService.on('call:incoming', ({ callId, caller }: { callId: string; caller: any }) => {
-    console.log('[WebSocket] Incoming call from:', caller.username);
+  socketService.on('call:incoming', ({ call, initiator, callType }: { call: any; initiator: any; callType: string }) => {
+    console.log('[WebSocket] Incoming call from:', initiator?.username || initiator?.email || 'Unknown');
 
     // Invalidate active calls
     queryClient.invalidateQueries({ queryKey: queryKeys.calls.active });
 
     // Show incoming call notification
-    toast.info(`Incoming call from ${caller.username}`, {
+    const callerName = initiator?.username || initiator?.email || 'Unknown';
+    toast.info(`Incoming ${callType} call from ${callerName}`, {
       duration: 30000, // 30 seconds
       action: {
         label: 'Answer',
         onClick: () => {
           // Handle call answer
-          window.location.href = `/call/${callId}`;
+          window.location.href = `/call/${call.id}`;
         },
       },
     });

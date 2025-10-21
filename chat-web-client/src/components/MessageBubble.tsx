@@ -52,7 +52,6 @@ interface Message {
   createdAt: string | Date;
   isEdited?: boolean;
   isDeleted?: boolean;
-  isPinned?: boolean;
   replyTo?: {
     id: string;
     content: string;
@@ -197,19 +196,6 @@ export function MessageBubble({
             <div className="text-muted-foreground line-clamp-1">
               {message.replyTo.content}
             </div>
-          </div>
-        )}
-
-        {/* Pin indicator - positioned above message */}
-        {message.isPinned && (
-          <div
-            className={cn(
-              "flex items-center gap-1 text-xs px-2 py-0.5 rounded-full mb-1 w-fit",
-              "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
-            )}
-          >
-            <Pin className="h-3 w-3 fill-current" />
-            <span className="font-medium">Pinned</span>
           </div>
         )}
 

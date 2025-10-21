@@ -50,3 +50,49 @@ export function useEndCall() {
     meta: { successMessage: 'Call ended' },
   });
 }
+
+export function useAcceptCall() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ callId, audioEnabled, videoEnabled }: {
+      callId: string;
+      audioEnabled?: boolean;
+      videoEnabled?: boolean;
+    }) => callsApi.accept(callId, { audioEnabled, videoEnabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.calls.active });
+    },
+    meta: { successMessage: 'Call accepted', errorMessage: 'Failed to accept call' },
+  });
+}
+
+export function useRejectCall() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (callId: string) => callsApi.reject(callId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.calls.active });
+    },
+    meta: { successMessage: 'Call rejected', errorMessage: 'Failed to reject call' },
+  });
+}
+
+export function useMarkCallAsMissed() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (callId: string) => callsApi.markAsMissed(callId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.calls.history() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.calls.missed() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all() });
+    },
+  });
+}
+
+export function useMissedCalls(params?: PaginationParams) {
+  return useQuery({
+    queryKey: queryKeys.calls.missed(params),
+    queryFn: () => callsApi.getMissed(params),
+    staleTime: 30 * 1000, // Refetch every 30 seconds
+  });
+}

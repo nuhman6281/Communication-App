@@ -183,9 +183,39 @@ export const callsApi = {
   },
 
   /**
+   * Accept incoming call
+   */
+  accept: async (id: string, params?: { audioEnabled?: boolean; videoEnabled?: boolean }): Promise<{
+    call: Call;
+    jitsiConfig: any;
+  }> => {
+    const response = await apiClient.post(`/calls/${id}/accept`, params);
+    return response.data;
+  },
+
+  /**
    * Reject incoming call
    */
   reject: async (id: string): Promise<void> => {
     await apiClient.post(`/calls/${id}/reject`);
+  },
+
+  /**
+   * Mark call as missed
+   */
+  markAsMissed: async (id: string): Promise<Call> => {
+    const response = await apiClient.post(`/calls/${id}/missed`);
+    return response.data;
+  },
+
+  /**
+   * Update recording URL and metadata
+   */
+  updateRecording: async (id: string, data: {
+    recordingUrl?: string;
+    metadata?: Record<string, any>;
+  }): Promise<Call> => {
+    const response = await apiClient.post(`/calls/${id}/recording`, data);
+    return response.data;
   },
 };

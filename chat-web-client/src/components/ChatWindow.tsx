@@ -15,8 +15,9 @@ import {
   MoreVertical,
   Loader2,
   Pin,
+  Users,
 } from "lucide-react";
-import { useMessages, useSendMessage, useConversation, useAddReaction, useRemoveReaction, useUpdateMessage, useDeleteMessage, usePinMessage, useUnpinMessage } from "@/hooks";
+import { useMessages, useSendMessage, useConversation, useAddReaction, useRemoveReaction, useUpdateMessage, useDeleteMessage, usePinMessage, useUnpinMessage, useInitiateCall } from "@/hooks";
 import { useAuthStore } from "@/lib/stores";
 import { useTypingUsers } from "@/lib/stores/presence.store";
 import { socketService } from "@/lib/websocket";
@@ -26,17 +27,25 @@ import { MessageComposer } from "./MessageComposer";
 import { MessageBubble as MessageBubbleComponent } from "./MessageBubble";
 import { ForwardMessageDialog } from "./ForwardMessageDialog";
 import { PinnedMessagesPanel } from "./PinnedMessagesPanel";
+import { GroupCallDialog } from "./GroupCallDialog";
 
 interface ChatWindowProps {
   conversationId: string;
   onBack: () => void;
   onVideoCall: () => void;
+  onCallInitiated?: (callData: {
+    callId: string;
+    recipientName: string;
+    recipientAvatar?: string;
+    callType: 'audio' | 'video';
+  }) => void;
 }
 
 export function ChatWindow({
   conversationId,
   onBack,
   onVideoCall,
+  onCallInitiated,
 }: ChatWindowProps) {
   const [replyingTo, setReplyingTo] = useState<{
     id: string;
@@ -52,6 +61,7 @@ export function ChatWindow({
     content: string;
   } | null>(null);
   const [showPinnedPanel, setShowPinnedPanel] = useState(false);
+  const [showGroupCallDialog, setShowGroupCallDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -81,6 +91,9 @@ export function ChatWindow({
   const deleteMessageMutation = useDeleteMessage(conversationId);
   const pinMessageMutation = usePinMessage(conversationId);
   const unpinMessageMutation = useUnpinMessage(conversationId);
+
+  // Call initiation mutation
+  const initiateCallMutation = useInitiateCall();
 
   // Presence store for typing indicators
   const typingUsers = useTypingUsers(conversationId) || [];
@@ -333,16 +346,73 @@ export function ChatWindow({
           >
             <Pin className={`w-5 h-5 ${showPinnedPanel ? 'text-primary fill-current' : ''}`} />
           </Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9">
-            <Phone className="w-5 h-5" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={async () => {
+              try {
+                const call = await initiateCallMutation.mutateAsync({
+                  conversationId,
+                  type: 'audio' as const,
+                });
+
+                // Get recipient info from conversation
+                const { name: conversationName, avatar } = getConversationInfo();
+
+                // Show outgoing call modal
+                onCallInitiated?.({
+                  callId: call.id,
+                  recipientName: conversationName,
+                  recipientAvatar: avatar,
+                  callType: 'audio',
+                });
+              } catch (error) {
+                console.error('Failed to initiate audio call:', error);
+              }
+            }}
+            disabled={initiateCallMutation.isPending}
+            title="Start audio call"
+          >
+            {initiateCallMutation.isPending ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Phone className="w-5 h-5" />
+            )}
           </Button>
           <Button
             variant="ghost"
             size="icon"
             className="h-9 w-9"
-            onClick={onVideoCall}
+            onClick={async () => {
+              try {
+                const call = await initiateCallMutation.mutateAsync({
+                  conversationId,
+                  type: 'video' as const,
+                });
+
+                // Get recipient info from conversation
+                const { name: conversationName, avatar } = getConversationInfo();
+
+                // Show outgoing call modal
+                onCallInitiated?.({
+                  callId: call.id,
+                  recipientName: conversationName,
+                  recipientAvatar: avatar,
+                  callType: 'video',
+                });
+              } catch (error) {
+                console.error('Failed to initiate video call:', error);
+              }
+            }}
+            disabled={initiateCallMutation.isPending}
+            title="Start video call"
           >
-            <Video className="w-5 h-5" />
+            {initiateCallMutation.isPending ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Video className="w-5 h-5" />
+            )}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -351,6 +421,11 @@ export function ChatWindow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setShowGroupCallDialog(true)}>
+                <Users className="w-4 h-4 mr-2" />
+                Start Group Call
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem>View Profile</DropdownMenuItem>
               <DropdownMenuItem>Search in Conversation</DropdownMenuItem>
               <DropdownMenuItem>Mute Notifications</DropdownMenuItem>
@@ -573,6 +648,14 @@ export function ChatWindow({
           }}
         />
       )}
+
+      {/* Group Call Dialog */}
+      <GroupCallDialog
+        open={showGroupCallDialog}
+        onOpenChange={setShowGroupCallDialog}
+        conversationId={conversationId}
+        onCallInitiated={onCallInitiated}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -13,6 +13,7 @@ import {
   Volume2,
   Loader2,
   Bookmark,
+  PhoneMissed,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -20,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { useConversations, useSelfConversation } from "@/hooks";
+import { useConversations, useSelfConversation, useMissedCalls } from "@/hooks";
 import { useAuthStore } from "@/lib/stores";
 import { Skeleton } from "./ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
@@ -64,6 +65,20 @@ export function ConversationList({
 
   // Fetch self-conversation
   const { data: selfConversation } = useSelfConversation();
+
+  // Fetch missed calls
+  const { data: missedCallsData } = useMissedCalls({ limit: 100 });
+
+  // Calculate missed calls per conversation
+  const missedCallsPerConversation = useMemo(() => {
+    const counts: Record<string, number> = {};
+    missedCallsData?.items?.forEach((call: any) => {
+      if (call.conversationId) {
+        counts[call.conversationId] = (counts[call.conversationId] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [missedCallsData]);
 
   // Format timestamp helper
   const formatTimestamp = (date: string) => {
@@ -303,11 +318,19 @@ export function ConversationList({
                       <p className="text-sm text-muted-foreground truncate">
                         {conversation.lastMessage?.content || "No messages yet"}
                       </p>
-                      {conversation.unreadCount > 0 && (
-                        <Badge className="shrink-0 bg-blue-600 hover:bg-blue-700">
-                          {conversation.unreadCount}
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {conversation.unreadCount > 0 && (
+                          <Badge className="bg-blue-600 hover:bg-blue-700">
+                            {conversation.unreadCount}
+                          </Badge>
+                        )}
+                        {missedCallsPerConversation[conversation.id] > 0 && (
+                          <Badge variant="destructive" className="gap-1">
+                            <PhoneMissed className="w-3 h-3" />
+                            {missedCallsPerConversation[conversation.id]}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
 
                     {conversation.type === "group" &&

@@ -36,7 +36,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "./MessageContentRenderer";
-import { AIAssistant } from "./AIAssistant";
 
 interface MessageComposerProps {
   onSendMessage: (
@@ -53,14 +52,12 @@ interface MessageComposerProps {
   editingMessage?: {
     id: string;
     content: string;
-    metadata?: any;
   } | null;
   onCancelReply?: () => void;
   onCancelEdit?: () => void;
   placeholder?: string;
   disabled?: boolean;
   initialValue?: string;
-  lastReceivedMessage?: string; // For AI smart replies
 }
 
 export function MessageComposer({
@@ -73,14 +70,12 @@ export function MessageComposer({
   placeholder = "Type a message...",
   disabled = false,
   initialValue,
-  lastReceivedMessage,
 }: MessageComposerProps) {
   const [message, setMessage] = useState(initialValue || "");
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showFormatting, setShowFormatting] = useState(false);
-  const [showAIAssistant, setShowAIAssistant] = useState(true); // Toggle for AI assistant
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -539,15 +534,6 @@ export function MessageComposer({
         accept="video/*"
         onChange={handleFileSelect}
       />
-
-      {/* AI Assistant */}
-      {showAIAssistant && !editingMessage && (
-        <AIAssistant
-          message={message}
-          onEnhance={(enhanced) => setMessage(enhanced)}
-          lastReceivedMessage={lastReceivedMessage}
-        />
-      )}
     </div>
   );
 }

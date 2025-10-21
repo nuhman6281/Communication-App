@@ -53,6 +53,9 @@ export class Call {
   @Column({ nullable: true })
   jitsiRoomId: string;
 
+  @Column({ nullable: true })
+  jitsiRoomUrl: string;
+
   @Column({ type: 'jsonb', nullable: true })
   participants: string[]; // Array of user IDs
 
