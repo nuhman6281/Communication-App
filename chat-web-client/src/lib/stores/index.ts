@@ -49,5 +49,15 @@ export {
   useWorkspaceActions,
 } from './workspace.store';
 
+// Call Store
+export {
+  useCallStore,
+  useActiveCall,
+  useIncomingCall,
+  useLocalStream,
+  useCallActions,
+} from './call.store';
+
 // Re-export types
 export type { ViewType } from './ui.store';
+export type { CallType, CallStatus, CallParticipant, ActiveCall, IncomingCall } from './call.store';

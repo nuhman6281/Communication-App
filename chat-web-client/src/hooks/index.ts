@@ -10,7 +10,6 @@ export * from './useMessages';
 export * from './useGroups';
 export * from './useChannels';
 export * from './useMedia';
-export * from './useCalls';
 export * from './useWorkspaces';
 export * from './useAI';
 export * from './useSubscription';

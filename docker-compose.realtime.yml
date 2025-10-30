@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Real-time WebRTC Signaling Service
+  realtime-service:
+    build:
+      context: ./realtime-service
+      dockerfile: Dockerfile
+    container_name: chat-realtime-service
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      REALTIME_PORT: 4000
+      REDIS_HOST: redis-realtime
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis-password}
+      REDIS_ENABLED: "true"
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production-min-32-chars}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://localhost:5174,http://localhost:3000}
+      TURN_ENABLED: ${TURN_ENABLED:-true}
+      TURN_SERVER_URL: turn:coturn:3478
+      TURN_USERNAME: ${TURN_USERNAME:-username}
+      TURN_PASSWORD: ${TURN_PASSWORD:-password}
+      STUN_SERVER_URL: stun:coturn:3478
+      MAX_PARTICIPANTS_PER_CALL: 50
+      CALL_TIMEOUT_MS: 3600000
+      LOG_LEVEL: info
+    depends_on:
+      - redis-realtime
+      - coturn
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  # Redis for Real-time Service
+  redis-realtime:
+    image: redis:7-alpine
+    container_name: chat-redis-realtime
+    ports:
+      - "6380:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis-password} --appendonly yes
+    volumes:
+      - redis_realtime_data:/data
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  # Coturn TURN/STUN Server
+  coturn:
+    image: coturn/coturn:latest
+    container_name: chat-coturn
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+      - "5349:5349/udp"
+      - "49152-49200:49152-49200/udp"  # Reduced range for local dev
+    environment:
+      DETECT_EXTERNAL_IP: "yes"
+      EXTERNAL_IP: ${EXTERNAL_IP:-127.0.0.1}
+      LISTENING_PORT: 3478
+      TLS_LISTENING_PORT: 5349
+      MIN_PORT: 49152
+      MAX_PORT: 49200
+      REALM: ${TURN_REALM:-yourdomain.com}
+      SERVER_NAME: ${TURN_SERVER_NAME:-yourdomain.com}
+      LT_CRED_MECH: "yes"
+      FINGERPRINT: "yes"
+      VERBOSE: "yes"
+      LOG_FILE: stdout
+    command: |
+      --user=${TURN_USERNAME:-username}:${TURN_PASSWORD:-password}
+      --realm=${TURN_REALM:-yourdomain.com}
+      --server-name=${TURN_SERVER_NAME:-yourdomain.com}
+      --fingerprint
+      --lt-cred-mech
+      --no-multicast-peers
+      --no-tcp-relay
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx-realtime:
+    image: nginx:alpine
+    container_name: chat-nginx-realtime
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx-realtime.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - realtime-service
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+networks:
+  chat-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+volumes:
+  redis_realtime_data:
+    driver: local

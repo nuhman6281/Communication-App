@@ -4,43 +4,24 @@ import { ConversationList } from './ConversationList';
 import { ChatWindow } from './ChatWindow';
 import { UserProfile } from './UserProfile';
 import { Settings } from './Settings';
-import { VideoCallScreen } from './VideoCallScreen';
 import { StoriesView } from './StoriesView';
 import { WorkspaceView } from './WorkspaceView';
 import { GroupCreation } from './GroupCreation';
 import { NotificationsPanel } from './NotificationsPanel';
 import { GlobalSearch } from './GlobalSearch';
-import { IncomingCallModal } from './IncomingCallModal';
-import { OutgoingCallModal } from './OutgoingCallModal';
-import { CallHistoryPanel } from './CallHistoryPanel';
-import { useConversations, useJoinCall } from '@/hooks';
-import { useCallWebSocket } from '@/hooks/useCallWebSocket';
+import { useConversations } from '@/hooks';
 
-type View = 'chat' | 'profile' | 'settings' | 'video-call' | 'stories' | 'workspace' | 'create-group';
+type View = 'chat' | 'profile' | 'settings' | 'stories' | 'workspace' | 'create-group';
 
 export function ChatInterface() {
   const [currentView, setCurrentView] = useState<View>('chat');
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [showConversationList, setShowConversationList] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showCallHistory, setShowCallHistory] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-  const [activeCallJitsiConfig, setActiveCallJitsiConfig] = useState<any>(null);
-  const [outgoingCall, setOutgoingCall] = useState<{
-    callId: string;
-    recipientName: string;
-    recipientAvatar?: string;
-    callType: 'audio' | 'video';
-  } | null>(null);
 
   // Fetch conversations to auto-select the first one
   const { data: conversationsData } = useConversations({});
-
-  // Call notifications
-  const { incomingCall, clearIncomingCall, callAccepted, clearCallAccepted } = useCallWebSocket();
-
-  // Join call mutation (for initiator when call is accepted)
-  const joinCallMutation = useJoinCall();
 
   // Auto-select first conversation when data loads
   useEffect(() => {
@@ -51,45 +32,12 @@ export function ChatInterface() {
     }
   }, [conversationsData, selectedConversation]);
 
-  // Handle call accepted (for initiator)
-  useEffect(() => {
-    if (callAccepted && outgoingCall?.callId === callAccepted.callId) {
-      console.log('[ChatInterface] Call accepted by recipient, joining call...');
-
-      // Join the call to get Jitsi config
-      joinCallMutation.mutate(callAccepted.callId, {
-        onSuccess: (data) => {
-          console.log('[ChatInterface] Joined call successfully:', data);
-          setActiveCallJitsiConfig(data.jitsiConfig);
-          setCurrentView('video-call');
-          setOutgoingCall(null);
-          clearCallAccepted();
-        },
-        onError: (error) => {
-          console.error('[ChatInterface] Failed to join call:', error);
-          setOutgoingCall(null);
-          clearCallAccepted();
-        },
-      });
-    }
-  }, [callAccepted, outgoingCall, clearCallAccepted, joinCallMutation]);
-
   const renderMainContent = () => {
     switch (currentView) {
       case 'profile':
         return <UserProfile onBack={() => setCurrentView('chat')} />;
       case 'settings':
         return <Settings onBack={() => setCurrentView('chat')} />;
-      case 'video-call':
-        return (
-          <VideoCallScreen
-            onEnd={() => {
-              setCurrentView('chat');
-              setActiveCallJitsiConfig(null);
-            }}
-            jitsiConfig={activeCallJitsiConfig}
-          />
-        );
       case 'stories':
         return <StoriesView onBack={() => setCurrentView('chat')} />;
       case 'workspace':
@@ -139,8 +87,6 @@ export function ChatInterface() {
                 <ChatWindow
                   conversationId={selectedConversation}
                   onBack={() => setShowConversationList(true)}
-                  onVideoCall={() => setCurrentView('video-call')}
-                  onCallInitiated={(callData) => setOutgoingCall(callData)}
                 />
               ) : (
                 <div className="hidden md:flex h-full items-center justify-center bg-muted/20">
@@ -168,17 +114,6 @@ export function ChatInterface() {
                 }}
               />
             )}
-
-            {/* Call History Panel */}
-            {showCallHistory && (
-              <CallHistoryPanel
-                onClose={() => setShowCallHistory(false)}
-                onCallInitiated={(callData) => {
-                  setOutgoingCall(callData);
-                  setShowCallHistory(false);
-                }}
-              />
-            )}
           </div>
         );
     }
@@ -193,7 +128,6 @@ export function ChatInterface() {
           setShowConversationList(true);
         }}
         onNotificationsClick={() => setShowNotifications(!showNotifications)}
-        onCallHistoryClick={() => setShowCallHistory(!showCallHistory)}
         onSearchClick={() => setShowSearch(true)}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -210,35 +144,6 @@ export function ChatInterface() {
               setShowConversationList(false);
               setCurrentView('chat');
             }
-          }}
-        />
-      )}
-
-      {/* Incoming Call Modal */}
-      {incomingCall && (
-        <IncomingCallModal
-          incomingCall={incomingCall}
-          onAccept={(callId, jitsiConfig) => {
-            setActiveCallJitsiConfig(jitsiConfig);
-            setCurrentView('video-call');
-            clearIncomingCall();
-            setOutgoingCall(null); // Clear outgoing if accepting
-          }}
-          onReject={() => {
-            clearIncomingCall();
-          }}
-        />
-      )}
-
-      {/* Outgoing Call Modal */}
-      {outgoingCall && (
-        <OutgoingCallModal
-          callId={outgoingCall.callId}
-          recipientName={outgoingCall.recipientName}
-          recipientAvatar={outgoingCall.recipientAvatar}
-          callType={outgoingCall.callType}
-          onCancel={() => {
-            setOutgoingCall(null);
           }}
         />
       )}

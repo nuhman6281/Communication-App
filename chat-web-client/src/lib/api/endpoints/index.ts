@@ -10,7 +10,6 @@ export { usersApi } from './users.api';
 export { groupsApi } from './groups.api';
 export { channelsApi } from './channels.api';
 export { mediaApi } from './media.api';
-export { callsApi } from './calls.api';
 export { storiesApi } from './stories.api';
 export { notificationsApi } from './notifications.api';
 export { searchApi } from './search.api';

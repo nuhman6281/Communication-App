@@ -1,6 +1,2999 @@
-# Comprehensive Enterprise Chat Application - Complete Development Guide
+Use indexes on frequently queried fields
+
+- Profile slow queries and optimize
+
+#### 12. **Security Rules (CRITICAL)**
+
+```typescript
+// ✅ CORRECT: Input validation
+@Post()
+async createUser(@Body() dto: CreateUserDto) {
+  // Sanitize input
+  dto.email = dto.email.trim().toLowerCase();
+  dto.username = this.sanitizeUsername(dto.username);
+
+  // Validate
+  if (!this.isValidEmail(dto.email)) {
+    throw new BadRequestException('Invalid email format');
+  }
+
+  // Hash password
+  dto.password = await this.hashPassword(dto.password);
+
+  return this.userService.createUser(dto);
+}
+
+// ❌ INCORRECT: Direct database query with user input
+@Get()
+async searchUsers(@Query('q') query: string) {
+  return this.db.query(`SELECT * FROM users WHERE name LIKE '%${query}%'`); // SQL injection!
+}
+```
+
+**Security Rules:**
+
+- NEVER trust user input
+- Always validate and sanitize
+- Use parameterized queries
+- Hash passwords (bcrypt, min 12 rounds)
+- Implement rate limiting
+- Use HTTPS only
+- Keep dependencies updated
+- Follow OWASP guidelines
+
+#### 13. **Memory Management**
+
+```dart
+// ✅ CORRECT: Proper resource disposal
+class ChatScreen extends StatefulWidget {
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  late final ScrollController _scrollController;
+  late final TextEditingController _textController;
+  StreamSubscription? _messageSubscription;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _textController = TextEditingController();
+    _setupListeners();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _textController.dispose();
+    _messageSubscription?.cancel();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold();
+}
+```
+
+#### 14. **DRY Principle (Don't Repeat Yourself)**
+
+```typescript
+// ❌ INCORRECT: Repeated code
+function validateEmail(email: string): boolean {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(email);
+}
+
+function validateUserEmail(email: string): boolean {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(email);
+}
+
+// ✅ CORRECT: Reusable utility
+export class ValidationUtils {
+  private static readonly EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  static isValidEmail(email: string): boolean {
+    return this.EMAIL_REGEX.test(email);
+  }
+}
+```
+
+#### 15. **Code Review Checklist**
+
+Before committing code, verify:
+
+- [ ] No console.log or print statements
+- [ ] All errors handled properly
+- [ ] Tests written and passing
+- [ ] No magic numbers or hardcoded values
+- [ ] Code formatted (Prettier/Dart formatter)
+- [ ] No unused imports or variables
+- [ ] Function/file length within limits
+- [ ] Documentation added for complex logic
+- [ ] Security considerations addressed
+- [ ] Performance implications considered
+
+---
+
+## 🎥 WebRTC Video/Audio Calls (Replacing Jitsi)
+
+### Dedicated Real-time Microservice Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Load Balancer (Nginx)                    │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+        ▼                  ▼                  ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│   Backend    │  │   Backend    │  │   Backend    │
+│  (NestJS)    │  │  (NestJS)    │  │  (NestJS)    │
+│  Port 3000   │  │  Port 3000   │  │  Port 3000   │
+└──────────────┘  └──────────────┘  └──────────────┘
+        │                  │                  │
+        └──────────────────┼──────────────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │  PostgreSQL     │
+                  │  Redis          │
+                  └─────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│           WebRTC Signaling Server (Node.js)                  │
+│                    Port 4000                                 │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Socket.IO Server                                     │  │
+│  │  - Signaling (offer/answer/ice)                      │  │
+│  │  - Chat messaging                                     │  │
+│  │  - Presence management                                │  │
+│  │  - Room management                                    │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │  Redis Adapter  │
+                  │  (For scaling)  │
+                  └─────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│              TURN/STUN Server (Coturn)                       │
+│                    Port 3478                                 │
+│  - NAT traversal                                             │
+│  - Media relay (when P2P fails)                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### WebRTC Signaling Microservice Structure
+
+```
+realtime-service/
+├── src/
+│   ├── index.ts                         # Entry point
+│   ├── server.ts                        # Socket.IO server setup
+│   │
+│   ├── config/
+│   │   ├── environment.ts               # Environment config
+│   │   ├── redis.config.ts              # Redis configuration
+│   │   └── turn.config.ts               # TURN server config
+│   │
+│   ├── services/
+│   │   ├── signaling.service.ts         # WebRTC signaling logic
+│   │   ├── room.service.ts              # Room management
+│   │   ├── presence.service.ts          # User presence
+│   │   ├── chat.service.ts              # Real-time chat
+│   │   └── recording.service.ts         # Call recording (optional)
+│   │
+│   ├── handlers/
+│   │   ├── connection.handler.ts        # Socket connection handling
+│   │   ├── webrtc.handler.ts            # WebRTC events
+│   │   ├── chat.handler.ts              # Chat events
+│   │   └── call.handler.ts              # Call management
+│   │
+│   ├── models/
+│   │   ├── room.model.ts                # Room data structure
+│   │   ├── peer.model.ts                # Peer connection info
+│   │   └── message.model.ts             # Message structure
+│   │
+│   ├── middleware/
+│   │   ├── auth.middleware.ts           # JWT verification
+│   │   └── rate-limit.middleware.ts     # Rate limiting
+│   │
+│   └── utils/
+│       ├── logger.ts                    # Logging utility
+│       └── encryption.ts                # E2E encryption helpers
+│
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+│
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+### WebRTC Signaling Server Implementation
+
+```typescript
+// realtime-service/src/index.ts
+import express from "express";
+import { createServer } from "http";
+import { Server, Socket } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
+import Redis from "ioredis";
+import { verifyJWT } from "./middleware/auth.middleware";
+import { ConnectionHandler } from "./handlers/connection.handler";
+import { WebRTCHandler } from "./handlers/webrtc.handler";
+import { ChatHandler } from "./handlers/chat.handler";
+import { logger } from "./utils/logger";
+
+const app = express();
+const httpServer = createServer(app);
+
+// Socket.IO setup with Redis adapter for horizontal scaling
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CORS_ORIGIN?.split(",") || "*",
+    credentials: true,
+  },
+  transports: ["websocket", "polling"],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+});
+
+// Redis adapter for multi-instance support
+const pubClient = new Redis({
+  host: process.env.REDIS_HOST || "localhost",
+  port: parseInt(process.env.REDIS_PORT || "6379"),
+  password: process.env.REDIS_PASSWORD,
+});
+
+const subClient = pubClient.duplicate();
+
+io.adapter(createAdapter(pubClient, subClient));
+
+// Authentication middleware
+io.use(async (socket: Socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error("Authentication token required"));
+    }
+
+    const user = await verifyJWT(token);
+    socket.data.userId = user.id;
+    socket.data.username = user.username;
+
+    logger.info(`User authenticated: ${user.id}`);
+    next();
+  } catch (error) {
+    logger.error(`Authentication failed: ${error.message}`);
+    next(new Error("Authentication failed"));
+  }
+});
+
+// Initialize handlers
+const connectionHandler = new ConnectionHandler(io);
+const webrtcHandler = new WebRTCHandler(io);
+const chatHandler = new ChatHandler(io);
+
+// Socket connection handling
+io.on("connection", (socket: Socket) => {
+  logger.info(`Client connected: ${socket.id} (User: ${socket.data.userId})`);
+
+  // Connection events
+  connectionHandler.handleConnection(socket);
+
+  // WebRTC signaling events
+  socket.on("call:initiate", (data) =>
+    webrtcHandler.handleCallInitiate(socket, data)
+  );
+  socket.on("call:offer", (data) => webrtcHandler.handleOffer(socket, data));
+  socket.on("call:answer", (data) => webrtcHandler.handleAnswer(socket, data));
+  socket.on("call:ice-candidate", (data) =>
+    webrtcHandler.handleIceCandidate(socket, data)
+  );
+  socket.on("call:end", (data) => webrtcHandler.handleCallEnd(socket, data));
+  socket.on("call:reject", (data) =>
+    webrtcHandler.handleCallReject(socket, data)
+  );
+
+  // Media control events
+  socket.on("media:toggle-audio", (data) =>
+    webrtcHandler.handleToggleAudio(socket, data)
+  );
+  socket.on("media:toggle-video", (data) =>
+    webrtcHandler.handleToggleVideo(socket, data)
+  );
+  socket.on("screen:share-start", (data) =>
+    webrtcHandler.handleScreenShareStart(socket, data)
+  );
+  socket.on("screen:share-stop", (data) =>
+    webrtcHandler.handleScreenShareStop(socket, data)
+  );
+
+  // Chat messaging events
+  socket.on("message:send", (data) => chatHandler.handleMessage(socket, data));
+  socket.on("message:typing", (data) => chatHandler.handleTyping(socket, data));
+  socket.on("message:read", (data) => chatHandler.handleRead(socket, data));
+
+  // Room events
+  socket.on("room:join", (data) =>
+    connectionHandler.handleJoinRoom(socket, data)
+  );
+  socket.on("room:leave", (data) =>
+    connectionHandler.handleLeaveRoom(socket, data)
+  );
+
+  // Presence events
+  socket.on("presence:update", (data) =>
+    connectionHandler.handlePresenceUpdate(socket, data)
+  );
+
+  // Disconnection
+  socket.on("disconnect", () => connectionHandler.handleDisconnect(socket));
+});
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    connections: io.engine.clientsCount,
+    uptime: process.uptime(),
+  });
+});
+
+const PORT = process.env.PORT || 4000;
+
+httpServer.listen(PORT, () => {
+  logger.info(`WebRTC Signaling Server running on port ${PORT}`);
+});
+```
+
+### WebRTC Handler Implementation
+
+```typescript
+// realtime-service/src/handlers/webrtc.handler.ts
+import { Server, Socket } from "socket.io";
+import { RoomService } from "../services/room.service";
+import { logger } from "../utils/logger";
+
+interface CallData {
+  callId: string;
+  conversationId: string;
+  callType: "audio" | "video";
+  participants: string[];
+}
+
+interface SignalingData {
+  callId: string;
+  from: string;
+  to: string;
+  sdp?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
+}
+
+export class WebRTCHandler {
+  private roomService: RoomService;
+  private activeCalls: Map<string, CallData>;
+
+  constructor(private io: Server) {
+    this.roomService = new RoomService();
+    this.activeCalls = new Map();
+  }
+
+  // Initiate a call
+  async handleCallInitiate(
+    socket: Socket,
+    data: {
+      conversationId: string;
+      callType: "audio" | "video";
+      participants: string[];
+    }
+  ) {
+    try {
+      const callId = this.generateCallId();
+      const callData: CallData = {
+        callId,
+        conversationId: data.conversationId,
+        callType: data.callType,
+        participants: [socket.data.userId, ...data.participants],
+      };
+
+      this.activeCalls.set(callId, callData);
+
+      // Create room for the call
+      await this.roomService.createRoom(callId, callData.participants);
+
+      // Join the initiator to the room
+      socket.join(callId);
+
+      // Notify other participants
+      data.participants.forEach((participantId) => {
+        this.io.to(this.getUserSocketId(participantId)).emit("call:incoming", {
+          callId,
+          from: {
+            userId: socket.data.userId,
+            username: socket.data.username,
+          },
+          conversationId: data.conversationId,
+          callType: data.callType,
+        });
+      });
+
+      logger.info(`Call initiated: ${callId} by ${socket.data.userId}`);
+
+      socket.emit("call:initiated", { callId, status: "ringing" });
+    } catch (error) {
+      logger.error(`Failed to initiate call: ${error.message}`);
+      socket.emit("call:error", { message: "Failed to initiate call" });
+    }
+  }
+
+  // Handle WebRTC offer
+  async handleOffer(socket: Socket, data: SignalingData) {
+    try {
+      const { callId, to, sdp } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        throw new Error("Call not found");
+      }
+
+      // Forward offer to the recipient
+      this.io.to(this.getUserSocketId(to)).emit("call:offer", {
+        callId,
+        from: socket.data.userId,
+        sdp,
+      });
+
+      logger.info(
+        `Offer sent from ${socket.data.userId} to ${to} for call ${callId}`
+      );
+    } catch (error) {
+      logger.error(`Failed to handle offer: ${error.message}`);
+      socket.emit("call:error", { message: "Failed to send offer" });
+    }
+  }
+
+  // Handle WebRTC answer
+  async handleAnswer(socket: Socket, data: SignalingData) {
+    try {
+      const { callId, to, sdp } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        throw new Error("Call not found");
+      }
+
+      // Join the room
+      socket.join(callId);
+
+      // Forward answer to the caller
+      this.io.to(this.getUserSocketId(to)).emit("call:answer", {
+        callId,
+        from: socket.data.userId,
+        sdp,
+      });
+
+      // Update call status
+      const callData = this.activeCalls.get(callId);
+      this.io.to(callId).emit("call:connected", {
+        callId,
+        participants: callData?.participants,
+      });
+
+      logger.info(
+        `Answer sent from ${socket.data.userId} to ${to} for call ${callId}`
+      );
+    } catch (error) {
+      logger.error(`Failed to handle answer: ${error.message}`);
+      socket.emit("call:error", { message: "Failed to send answer" });
+    }
+  }
+
+  // Handle ICE candidates
+  async handleIceCandidate(socket: Socket, data: SignalingData) {
+    try {
+      const { callId, to, candidate } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        throw new Error("Call not found");
+      }
+
+      // Forward ICE candidate to the peer
+      this.io.to(this.getUserSocketId(to)).emit("call:ice-candidate", {
+        callId,
+        from: socket.data.userId,
+        candidate,
+      });
+
+      logger.debug(`ICE candidate sent from ${socket.data.userId} to ${to}`);
+    } catch (error) {
+      logger.error(`Failed to handle ICE candidate: ${error.message}`);
+    }
+  }
+
+  // Handle call end
+  async handleCallEnd(socket: Socket, data: { callId: string }) {
+    try {
+      const { callId } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        return;
+      }
+
+      const callData = this.activeCalls.get(callId);
+
+      // Notify all participants
+      this.io.to(callId).emit("call:ended", {
+        callId,
+        endedBy: socket.data.userId,
+      });
+
+      // Clean up
+      this.activeCalls.delete(callId);
+      await this.roomService.deleteRoom(callId);
+
+      // Make all participants leave the room
+      const sockets = await this.io.in(callId).fetchSockets();
+      sockets.forEach((s) => s.leave(callId));
+
+      logger.info(`Call ended: ${callId} by ${socket.data.userId}`);
+    } catch (error) {
+      logger.error(`Failed to end call: ${error.message}`);
+    }
+  }
+
+  // Handle call rejection
+  async handleCallReject(
+    socket: Socket,
+    data: { callId: string; reason?: string }
+  ) {
+    try {
+      const { callId, reason } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        return;
+      }
+
+      const callData = this.activeCalls.get(callId);
+
+      // Notify the caller
+      this.io.to(callId).emit("call:rejected", {
+        callId,
+        rejectedBy: socket.data.userId,
+        reason: reason || "Call declined",
+      });
+
+      // Clean up if no one else in call
+      const sockets = await this.io.in(callId).fetchSockets();
+      if (sockets.length <= 1) {
+        this.activeCalls.delete(callId);
+        await this.roomService.deleteRoom(callId);
+      }
+
+      logger.info(`Call rejected: ${callId} by ${socket.data.userId}`);
+    } catch (error) {
+      logger.error(`Failed to reject call: ${error.message}`);
+    }
+  }
+
+  // Handle audio toggle
+  handleToggleAudio(
+    socket: Socket,
+    data: { callId: string; enabled: boolean }
+  ) {
+    const { callId, enabled } = data;
+
+    socket.to(callId).emit("peer:audio-toggled", {
+      peerId: socket.data.userId,
+      enabled,
+    });
+
+    logger.debug(
+      `Audio ${enabled ? "enabled" : "disabled"} by ${socket.data.userId}`
+    );
+  }
+
+  // Handle video toggle
+  handleToggleVideo(
+    socket: Socket,
+    data: { callId: string; enabled: boolean }
+  ) {
+    const { callId, enabled } = data;
+
+    socket.to(callId).emit("peer:video-toggled", {
+      peerId: socket.data.userId,
+      enabled,
+    });
+
+    logger.debug(
+      `Video ${enabled ? "enabled" : "disabled"} by ${socket.data.userId}`
+    );
+  }
+
+  // Handle screen share start
+  handleScreenShareStart(socket: Socket, data: { callId: string }) {
+    const { callId } = data;
+
+    socket.to(callId).emit("screen:sharing-started", {
+      peerId: socket.data.userId,
+    });
+
+    logger.info(`Screen sharing started by ${socket.data.userId}`);
+  }
+
+  // Handle screen share stop
+  handleScreenShareStop(socket: Socket, data: { callId: string }) {
+    const { callId } = data;
+
+    socket.to(callId).emit("screen:sharing-stopped", {
+      peerId: socket.data.userId,
+    });
+
+    logger.info(`Screen sharing stopped by ${socket.data.userId}`);
+  }
+
+  private generateCallId(): string {
+    return `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private getUserSocketId(userId: string): string {
+    // Implementation to get socket ID from user ID
+    // This would query Redis or in-memory store
+    return `user:${userId}`;
+  }
+}
+```
+
+### Chat Handler Implementation
+
+```typescript
+// realtime-service/src/handlers/chat.handler.ts
+import { Server, Socket } from "socket.io";
+import { logger } from "../utils/logger";
+
+export class ChatHandler {
+  constructor(private io: Server) {}
+
+  async handleMessage(
+    socket: Socket,
+    data: {
+      conversationId: string;
+      content: string;
+      messageType: string;
+      tempId: string;
+    }
+  ) {
+    try {
+      const message = {
+        id: this.generateMessageId(),
+        tempId: data.tempId,
+        conversationId: data.conversationId,
+        senderId: socket.data.userId,
+        senderName: socket.data.username,
+        content: data.content,
+        messageType: data.messageType,
+        timestamp: new Date().toISOString(),
+        status: "sent",
+      };
+
+      // Emit to conversation room
+      this.io
+        .to(`conversation:${data.conversationId}`)
+        .emit("message:new", message);
+
+      // Acknowledge to sender
+      socket.emit("message:sent", {
+        tempId: data.tempId,
+        messageId: message.id,
+      });
+
+      logger.info(`Message sent in conversation ${data.conversationId}`);
+    } catch (error) {
+      logger.error(`Failed to handle message: ${error.message}`);
+      socket.emit("message:error", {
+        tempId: data.tempId,
+        error: "Failed to send message",
+      });
+    }
+  }
+
+  handleTyping(
+    socket: Socket,
+    data: { conversationId: string; isTyping: boolean }
+  ) {
+    socket.to(`conversation:${data.conversationId}`).emit("user:typing", {
+      userId: socket.data.userId,
+      username: socket.data.username,
+      conversationId: data.conversationId,
+      isTyping: data.isTyping,
+    });
+  }
+
+  handleRead(
+    socket: Socket,
+    data: { conversationId: string; messageIds: string[] }
+  ) {
+    socket.to(`conversation:${data.conversationId}`).emit("messages:read", {
+      userId: socket.data.userId,
+      conversationId: data.conversationId,
+      messageIds: data.messageIds,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  private generateMessageId(): string {
+    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+```
+
+### TURN/STUN Server Configuration (Coturn)
+
+```yaml
+# docker/coturn/turnserver.conf
+listening-port=3478
+tls-listening-port=5349
+
+min-port=49152
+max-port=65535
+
+fingerprint
+lt-cred-mech
+
+realm=yourdomain.com
+server-name=yourdomain.com
+
+# User credentials for TURN
+user=username:password
+
+# SSL certificates
+cert=/etc/coturn/certs/cert.pem
+pkey=/etc/coturn/certs/key.pem
+
+# Logging
+log-file=/var/log/coturn/turnserver.log
+verbose
+
+# No multicast
+no-multicast-peers
+
+# Relay settings
+no-tcp-relay
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+```
+
+### Docker Compose for Real-time Service
+
+```yaml
+# docker-compose.realtime.yml
+version: "3.8"
+
+services:
+  realtime-service:
+    build:
+      context: ./realtime-service
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      TURN_SERVER_URL: turn:${TURN_SERVER}:3478
+      TURN_USERNAME: ${TURN_USERNAME}
+      TURN_PASSWORD: ${TURN_PASSWORD}
+    depends_on:
+      - redis
+      - coturn
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  coturn:
+    image: coturn/coturn:latest
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+      - "5349:5349/udp"
+      - "49152-65535:49152-65535/udp"
+    volumes:
+      - ./docker/coturn/turnserver.conf:/etc/coturn/turnserver.conf
+      - ./docker/coturn/certs:/etc/coturn/certs
+    environment:
+      TURN_USERNAME: ${TURN_USERNAME}
+      TURN_PASSWORD: ${TURN_PASSWORD}
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_realtime_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis_realtime_data:
+```
+
+---
+
+## 🌐 React Web Application with Root-Level Video Call Component
+
+### CRITICAL: Video Call Component Architecture
+
+**The video call component MUST be implemented as an ABSOLUTE ROOT-LEVEL component that:**
+
+- ✅ Renders above ALL other UI components (z-index: 9999)
+- ✅ Persists through page navigation and refreshes
+- ✅ Maintains WebRTC connection during navigation
+- ✅ Only closes on explicit user action (hang up/end call)
+- ✅ Survives route changes, page refreshes, and browser back/forward
+- ✅ Uses React Portal to render outside normal DOM hierarchy
+- ✅ Stores call state in persistent storage (localStorage + Redux/Zustand)
+
+### React Frontend Structure (Cross-Platform Web/Desktop)
+
+```
+frontend-web/
+├── public/
+│   ├── index.html
+│   ├── service-worker.js              # For PWA and call persistence
+│   └── manifest.json
+│
+├── src/
+│   ├── index.tsx                      # Root entry point
+│   ├── App.tsx                        # Main app component
+│   │
+│   ├── components/
+│   │   ├── call/                      # ⭐ ROOT-LEVEL CALL COMPONENTS
+│   │   │   ├── GlobalCallContainer.tsx      # Portal container (root level)
+│   │   │   ├── VideoCallOverlay.tsx         # Full-screen call overlay
+│   │   │   ├── IncomingCallDialog.tsx       # Incoming call notification
+│   │   │   ├── CallControls.tsx             # Audio/Video/Screen share controls
+│   │   │   ├── ParticipantGrid.tsx          # Video grid layout
+│   │   │   ├── MinimizedCallWidget.tsx      # PiP mode
+│   │   │   └── CallPersistence.tsx          # Call state persistence handler
+│   │   │
+│   │   ├── chat/
+│   │   │   ├── ChatWindow.tsx
+│   │   │   ├── MessageList.tsx
+│   │   │   └── MessageInput.tsx
+│   │   │
+│   │   └── common/
+│   │       ├── Navbar.tsx
+│   │       └── Sidebar.tsx
+│   │
+│   ├── contexts/
+│   │   ├── CallContext.tsx            # Global call state management
+│   │   └── WebRTCContext.tsx          # WebRTC connections
+│   │
+│   ├── hooks/
+│   │   ├── useCallPersistence.ts      # Persist call across refreshes
+│   │   ├── useWebRTC.ts               # WebRTC hook
+│   │   └── useSocket.ts               # Socket.IO connection
+│   │
+│   ├── services/
+│   │   ├── webrtc.service.ts
+│   │   ├── socket.service.ts
+│   │   └── callPersistence.service.ts # Handle call recovery
+│   │
+│   ├── store/                          # Redux or Zustand
+│   │   ├── slices/
+│   │   │   ├── callSlice.ts           # Call state (PERSISTED)
+│   │   │   ├── userSlice.ts
+│   │   │   └── chatSlice.ts
+│   │   └── store.ts
+│   │
+│   └── utils/
+│       ├── callRecovery.ts            # Recover call after refresh
+│       └── storage.ts                 # Persistent storage helpers
+│
+├── package.json
+├── tsconfig.json
+└── vite.config.ts / webpack.config.js
+```
+
+### Root-Level Call Container Implementation
+
+```tsx
+// src/index.tsx - Application Entry Point
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { Provider } from "react-redux";
+import { PersistGate } from "redux-persist/integration/react";
+import { store, persistor } from "./store/store";
+import App from "./App";
+import { GlobalCallContainer } from "./components/call/GlobalCallContainer";
+import "./index.css";
+
+// Register service worker for call persistence
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/service-worker.js");
+}
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <Provider store={store}>
+      <PersistGate loading={null} persistor={persistor}>
+        {/* Main Application */}
+        <App />
+
+        {/* ⭐ CRITICAL: Root-level call container - Always rendered above everything */}
+        <GlobalCallContainer />
+      </PersistGate>
+    </Provider>
+  </React.StrictMode>
+);
+```
+
+### Global Call Container (Absolute Root Component)
+
+```tsx
+// src/components/call/GlobalCallContainer.tsx
+import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useSelector } from "react-redux";
+import { VideoCallOverlay } from "./VideoCallOverlay";
+import { IncomingCallDialog } from "./IncomingCallDialog";
+import { MinimizedCallWidget } from "./MinimizedCallWidget";
+import { useCallPersistence } from "../../hooks/useCallPersistence";
+import { RootState } from "../../store/store";
+import "./GlobalCallContainer.css";
+
+/**
+ * CRITICAL COMPONENT: Global Call Container
+ *
+ * This component MUST:
+ * 1. Render using React Portal to bypass normal DOM hierarchy
+ * 2. Have position: fixed with z-index: 9999
+ * 3. Persist through ALL navigation and page refreshes
+ * 4. Maintain WebRTC connections during lifecycle
+ * 5. Only unmount on explicit call termination
+ *
+ * DO NOT remove or modify without understanding call persistence requirements
+ */
+export const GlobalCallContainer: React.FC = () => {
+  const { activeCall, incomingCall, isMinimized } = useSelector(
+    (state: RootState) => state.call
+  );
+
+  // Initialize call persistence - recovers calls after page refresh
+  useCallPersistence();
+
+  // Prevent accidental page close during active call
+  useEffect(() => {
+    if (activeCall) {
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+        e.preventDefault();
+        e.returnValue =
+          "You have an active call. Are you sure you want to leave?";
+        return e.returnValue;
+      };
+
+      window.addEventListener("beforeunload", handleBeforeUnload);
+      return () =>
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+    }
+  }, [activeCall]);
+
+  // Create portal target if it doesn't exist
+  useEffect(() => {
+    let portalRoot = document.getElementById("call-portal-root");
+    if (!portalRoot) {
+      portalRoot = document.createElement("div");
+      portalRoot.id = "call-portal-root";
+      document.body.appendChild(portalRoot);
+    }
+  }, []);
+
+  const portalRoot = document.getElementById("call-portal-root");
+  if (!portalRoot) return null;
+
+  return createPortal(
+    <div className="global-call-container">
+      {/* Incoming call notification - highest priority */}
+      {incomingCall && <IncomingCallDialog call={incomingCall} />}
+
+      {/* Active call - full screen or minimized */}
+      {activeCall && (
+        <>
+          {isMinimized ? (
+            <MinimizedCallWidget call={activeCall} />
+          ) : (
+            <VideoCallOverlay call={activeCall} />
+          )}
+        </>
+      )}
+    </div>,
+    portalRoot
+  );
+};
+```
+
+### Global Call Container CSS (Critical Styling)
+
+```css
+/* src/components/call/GlobalCallContainer.css */
+
+/**
+ * CRITICAL STYLES - DO NOT MODIFY WITHOUT UNDERSTANDING IMPLICATIONS
+ * These styles ensure call component stays above ALL other UI
+ */
+
+#call-portal-root {
+  /* Ensure portal root is at document body level */
+  position: relative;
+  z-index: 9999;
+}
+
+.global-call-container {
+  /* CRITICAL: Must be fixed to survive navigation */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none; /* Allow clicks through when no active call */
+  z-index: 9999; /* Above everything else */
+}
+
+.global-call-container > * {
+  pointer-events: auto; /* Re-enable clicks for call components */
+}
+
+/* Full-screen call overlay */
+.video-call-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  z-index: 10000;
+}
+
+/* Minimized call widget (Picture-in-Picture) */
+.minimized-call-widget {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 320px;
+  height: 180px;
+  background: #1a1a1a;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 10001;
+  cursor: move; /* Draggable */
+}
+
+/* Incoming call dialog */
+.incoming-call-dialog {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  padding: 32px;
+  border-radius: 16px;
+  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.3);
+  z-index: 10002; /* Above everything including active call */
+  min-width: 400px;
+}
+
+/* Ensure call components are NOT affected by parent styles */
+.global-call-container * {
+  box-sizing: border-box;
+}
+```
+
+### Call Persistence Hook (Critical for Page Refresh)
+
+```tsx
+// src/hooks/useCallPersistence.ts
+import { useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState } from "../store/store";
+import { recoverCall, clearCallState } from "../store/slices/callSlice";
+import { CallPersistenceService } from "../services/callPersistence.service";
+import { WebRTCService } from "../services/webrtc.service";
+
+/**
+ * CRITICAL HOOK: Call Persistence
+ *
+ * Handles:
+ * 1. Saving call state to localStorage before page unload
+ * 2. Recovering call state after page refresh
+ * 3. Reconnecting WebRTC connections
+ * 4. Notifying peers about reconnection
+ *
+ * This hook ensures calls survive page refreshes and navigation
+ */
+export const useCallPersistence = () => {
+  const dispatch = useDispatch();
+  const { activeCall } = useSelector((state: RootState) => state.call);
+  const isRecovering = useRef(false);
+
+  // Save call state before page unload
+  useEffect(() => {
+    const saveCallState = () => {
+      if (activeCall) {
+        CallPersistenceService.saveCallState(activeCall);
+        console.log("[CallPersistence] Call state saved to localStorage");
+      }
+    };
+
+    // Save on visibility change (browser tab switch)
+    document.addEventListener("visibilitychange", saveCallState);
+
+    // Save before page unload
+    window.addEventListener("beforeunload", saveCallState);
+
+    // Periodic save (every 5 seconds) as backup
+    const intervalId = setInterval(saveCallState, 5000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", saveCallState);
+      window.removeEventListener("beforeunload", saveCallState);
+      clearInterval(intervalId);
+    };
+  }, [activeCall]);
+
+  // Recover call state on mount (after page refresh)
+  useEffect(() => {
+    const recoverCallOnMount = async () => {
+      if (isRecovering.current) return;
+      isRecovering.current = true;
+
+      try {
+        const savedCallState = CallPersistenceService.getCallState();
+
+        if (savedCallState) {
+          console.log(
+            "[CallPersistence] Found saved call state, attempting recovery..."
+          );
+
+          // Check if call is still active (not ended by other party)
+          const isCallStillActive =
+            await CallPersistenceService.verifyCallActive(
+              savedCallState.callId
+            );
+
+          if (isCallStillActive) {
+            // Recover call in Redux
+            dispatch(recoverCall(savedCallState));
+
+            // Reconnect WebRTC connections
+            await WebRTCService.reconnectCall(savedCallState);
+
+            console.log("[CallPersistence] Call recovered successfully");
+          } else {
+            console.log("[CallPersistence] Call no longer active, cleaning up");
+            CallPersistenceService.clearCallState();
+            dispatch(clearCallState());
+          }
+        }
+      } catch (error) {
+        console.error("[CallPersistence] Failed to recover call:", error);
+        CallPersistenceService.clearCallState();
+        dispatch(clearCallState());
+      } finally {
+        isRecovering.current = false;
+      }
+    };
+
+    // Wait for socket connection before recovering
+    const timer = setTimeout(recoverCallOnMount, 1000);
+    return () => clearTimeout(timer);
+  }, [dispatch]);
+
+  // Clean up on call end
+  useEffect(() => {
+    if (!activeCall) {
+      CallPersistenceService.clearCallState();
+    }
+  }, [activeCall]);
+};
+```
+
+### Call Persistence Service
+
+```typescript
+// src/services/callPersistence.service.ts
+import { SocketService } from "./socket.service";
+
+interface PersistedCallState {
+  callId: string;
+  conversationId: string;
+  callType: "audio" | "video";
+  participants: string[];
+  startedAt: number;
+  isAudioEnabled: boolean;
+  isVideoEnabled: boolean;
+  isScreenSharing: boolean;
+}
+
+const STORAGE_KEY = "active_call_state";
+const MAX_CALL_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+export class CallPersistenceService {
+  /**
+   * Save call state to localStorage
+   */
+  static saveCallState(callState: PersistedCallState): void {
+    try {
+      const data = {
+        ...callState,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.error("[CallPersistence] Failed to save call state:", error);
+    }
+  }
+
+  /**
+   * Get saved call state from localStorage
+   */
+  static getCallState(): PersistedCallState | null {
+    try {
+      const data = localStorage.getItem(STORAGE_KEY);
+      if (!data) return null;
+
+      const parsed = JSON.parse(data);
+
+      // Check if call is too old
+      const age = Date.now() - parsed.savedAt;
+      if (age > MAX_CALL_AGE_MS) {
+        console.log("[CallPersistence] Call state expired, clearing");
+        this.clearCallState();
+        return null;
+      }
+
+      return parsed;
+    } catch (error) {
+      console.error("[CallPersistence] Failed to get call state:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Verify if call is still active on server
+   */
+  static async verifyCallActive(callId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`/api/calls/${callId}/status`, {
+        headers: {
+          Authorization: `Bearer ${this.getAuthToken()}`,
+        },
+      });
+
+      if (!response.ok) return false;
+
+      const data = await response.json();
+      return data.status === "active";
+    } catch (error) {
+      console.error("[CallPersistence] Failed to verify call:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Clear saved call state
+   */
+  static clearCallState(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      console.error("[CallPersistence] Failed to clear call state:", error);
+    }
+  }
+
+  /**
+   * Notify server about reconnection
+   */
+  static async notifyReconnection(callId: string): Promise<void> {
+    const socket = SocketService.getSocket();
+    if (!socket) throw new Error("Socket not connected");
+
+    socket.emit("call:reconnected", { callId });
+  }
+
+  private static getAuthToken(): string {
+    return localStorage.getItem("auth_token") || "";
+  }
+}
+```
+
+### Video Call Overlay Component
+
+````tsx
+// src/components/call/VideoCallOverlay.tsx
+import React, { useEffect, useRef, useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { endCall, minimizeCall } from '../../store/slices/callSlice';
+import { WebRTCService } from '../../services/webrtc.service';
+import { CallControls } from './CallControls';
+import { ParticipantGrid } from './ParticipantGrid';
+import './VideoCallOverlay.css';
+
+interface VideoCallOverlayProps {
+  call: {
+    callId: string;
+    participants: Array<{
+      userId: string;
+      username: string;
+      stream?: MediaStream;
+    }>;
+    callType: 'audio' | 'video';
+  };
+}
+
+/**
+ * Full-screen video call overlay
+ *
+ * Features:
+ * - Multi-participant grid layout
+ * - Audio/video controls
+ * - Screen sharing
+ * - Minimize to PiP
+ * - Network quality indicators
+ */
+export const VideoCallOverlay: React.FC<VideoCallOverlayProps> = ({ call }) => {
+  const dispatch = useDispatch();
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(call.callType === 'video');
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+
+  // Initialize local stream
+  useEffect(() => {
+    const initializeMedia = async () => {
+      try {
+      Use indexes on frequently queried fields
+- Profile slow queries and optimize
+
+#### 12. **Security Rules (CRITICAL)**
+```typescript
+// ✅ CORRECT: Input validation
+@Post()
+async createUser(@Body() dto: CreateUserDto) {
+  // Sanitize input
+  dto.email = dto.email.trim().toLowerCase();
+  dto.username = this.sanitizeUsername(dto.username);
+
+  // Validate
+  if (!this.isValidEmail(dto.email)) {
+    throw new BadRequestException('Invalid email format');
+  }
+
+  // Hash password
+  dto.password = await this.hashPassword(dto.password);
+
+  return this.userService.createUser(dto);
+}
+
+// ❌ INCORRECT: Direct database query with user input
+@Get()
+async searchUsers(@Query('q') query: string) {
+  return this.db.query(`SELECT * FROM users WHERE name LIKE '%${query}%'`); // SQL injection!
+}
+````
+
+**Security Rules:**
+
+- NEVER trust user input
+- Always validate and sanitize
+- Use parameterized queries
+- Hash passwords (bcrypt, min 12 rounds)
+- Implement rate limiting
+- Use HTTPS only
+- Keep dependencies updated
+- Follow OWASP guidelines
+
+#### 13. **Memory Management**
+
+```dart
+// ✅ CORRECT: Proper resource disposal
+class ChatScreen extends StatefulWidget {
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  late final ScrollController _scrollController;
+  late final TextEditingController _textController;
+  StreamSubscription? _messageSubscription;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _textController = TextEditingController();
+    _setupListeners();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _textController.dispose();
+    _messageSubscription?.cancel();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold();
+}
+```
+
+#### 14. **DRY Principle (Don't Repeat Yourself)**
+
+```typescript
+// ❌ INCORRECT: Repeated code
+function validateEmail(email: string): boolean {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(email);
+}
+
+function validateUserEmail(email: string): boolean {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(email);
+}
+
+// ✅ CORRECT: Reusable utility
+export class ValidationUtils {
+  private static readonly EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  static isValidEmail(email: string): boolean {
+    return this.EMAIL_REGEX.test(email);
+  }
+}
+```
+
+#### 15. **Code Review Checklist**
+
+Before committing code, verify:
+
+- [ ] No console.log or print statements
+- [ ] All errors handled properly
+- [ ] Tests written and passing
+- [ ] No magic numbers or hardcoded values
+- [ ] Code formatted (Prettier/Dart formatter)
+- [ ] No unused imports or variables
+- [ ] Function/file length within limits
+- [ ] Documentation added for complex logic
+- [ ] Security considerations addressed
+- [ ] Performance implications considered
+
+---
+
+## 🎥 WebRTC Video/Audio Calls (Replacing Jitsi)
+
+### Dedicated Real-time Microservice Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Load Balancer (Nginx)                    │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+        ▼                  ▼                  ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│   Backend    │  │   Backend    │  │   Backend    │
+│  (NestJS)    │  │  (NestJS)    │  │  (NestJS)    │
+│  Port 3000   │  │  Port 3000   │  │  Port 3000   │
+└──────────────┘  └──────────────┘  └──────────────┘
+        │                  │                  │
+        └──────────────────┼──────────────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │  PostgreSQL     │
+                  │  Redis          │
+                  └─────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│           WebRTC Signaling Server (Node.js)                  │
+│                    Port 4000                                 │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Socket.IO Server                                     │  │
+│  │  - Signaling (offer/answer/ice)                      │  │
+│  │  - Chat messaging                                     │  │
+│  │  - Presence management                                │  │
+│  │  - Room management                                    │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │  Redis Adapter  │
+                  │  (For scaling)  │
+                  └─────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│              TURN/STUN Server (Coturn)                       │
+│                    Port 3478                                 │
+│  - NAT traversal                                             │
+│  - Media relay (when P2P fails)                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### WebRTC Signaling Microservice Structure
+
+```
+realtime-service/
+├── src/
+│   ├── index.ts                         # Entry point
+│   ├── server.ts                        # Socket.IO server setup
+│   │
+│   ├── config/
+│   │   ├── environment.ts               # Environment config
+│   │   ├── redis.config.ts              # Redis configuration
+│   │   └── turn.config.ts               # TURN server config
+│   │
+│   ├── services/
+│   │   ├── signaling.service.ts         # WebRTC signaling logic
+│   │   ├── room.service.ts              # Room management
+│   │   ├── presence.service.ts          # User presence
+│   │   ├── chat.service.ts              # Real-time chat
+│   │   └── recording.service.ts         # Call recording (optional)
+│   │
+│   ├── handlers/
+│   │   ├── connection.handler.ts        # Socket connection handling
+│   │   ├── webrtc.handler.ts            # WebRTC events
+│   │   ├── chat.handler.ts              # Chat events
+│   │   └── call.handler.ts              # Call management
+│   │
+│   ├── models/
+│   │   ├── room.model.ts                # Room data structure
+│   │   ├── peer.model.ts                # Peer connection info
+│   │   └── message.model.ts             # Message structure
+│   │
+│   ├── middleware/
+│   │   ├── auth.middleware.ts           # JWT verification
+│   │   └── rate-limit.middleware.ts     # Rate limiting
+│   │
+│   └── utils/
+│       ├── logger.ts                    # Logging utility
+│       └── encryption.ts                # E2E encryption helpers
+│
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+│
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+### WebRTC Signaling Server Implementation
+
+```typescript
+// realtime-service/src/index.ts
+import express from "express";
+import { createServer } from "http";
+import { Server, Socket } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
+import Redis from "ioredis";
+import { verifyJWT } from "./middleware/auth.middleware";
+import { ConnectionHandler } from "./handlers/connection.handler";
+import { WebRTCHandler } from "./handlers/webrtc.handler";
+import { ChatHandler } from "./handlers/chat.handler";
+import { logger } from "./utils/logger";
+
+const app = express();
+const httpServer = createServer(app);
+
+// Socket.IO setup with Redis adapter for horizontal scaling
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CORS_ORIGIN?.split(",") || "*",
+    credentials: true,
+  },
+  transports: ["websocket", "polling"],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+});
+
+// Redis adapter for multi-instance support
+const pubClient = new Redis({
+  host: process.env.REDIS_HOST || "localhost",
+  port: parseInt(process.env.REDIS_PORT || "6379"),
+  password: process.env.REDIS_PASSWORD,
+});
+
+const subClient = pubClient.duplicate();
+
+io.adapter(createAdapter(pubClient, subClient));
+
+// Authentication middleware
+io.use(async (socket: Socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error("Authentication token required"));
+    }
+
+    const user = await verifyJWT(token);
+    socket.data.userId = user.id;
+    socket.data.username = user.username;
+
+    logger.info(`User authenticated: ${user.id}`);
+    next();
+  } catch (error) {
+    logger.error(`Authentication failed: ${error.message}`);
+    next(new Error("Authentication failed"));
+  }
+});
+
+// Initialize handlers
+const connectionHandler = new ConnectionHandler(io);
+const webrtcHandler = new WebRTCHandler(io);
+const chatHandler = new ChatHandler(io);
+
+// Socket connection handling
+io.on("connection", (socket: Socket) => {
+  logger.info(`Client connected: ${socket.id} (User: ${socket.data.userId})`);
+
+  // Connection events
+  connectionHandler.handleConnection(socket);
+
+  // WebRTC signaling events
+  socket.on("call:initiate", (data) =>
+    webrtcHandler.handleCallInitiate(socket, data)
+  );
+  socket.on("call:offer", (data) => webrtcHandler.handleOffer(socket, data));
+  socket.on("call:answer", (data) => webrtcHandler.handleAnswer(socket, data));
+  socket.on("call:ice-candidate", (data) =>
+    webrtcHandler.handleIceCandidate(socket, data)
+  );
+  socket.on("call:end", (data) => webrtcHandler.handleCallEnd(socket, data));
+  socket.on("call:reject", (data) =>
+    webrtcHandler.handleCallReject(socket, data)
+  );
+
+  // Media control events
+  socket.on("media:toggle-audio", (data) =>
+    webrtcHandler.handleToggleAudio(socket, data)
+  );
+  socket.on("media:toggle-video", (data) =>
+    webrtcHandler.handleToggleVideo(socket, data)
+  );
+  socket.on("screen:share-start", (data) =>
+    webrtcHandler.handleScreenShareStart(socket, data)
+  );
+  socket.on("screen:share-stop", (data) =>
+    webrtcHandler.handleScreenShareStop(socket, data)
+  );
+
+  // Chat messaging events
+  socket.on("message:send", (data) => chatHandler.handleMessage(socket, data));
+  socket.on("message:typing", (data) => chatHandler.handleTyping(socket, data));
+  socket.on("message:read", (data) => chatHandler.handleRead(socket, data));
+
+  // Room events
+  socket.on("room:join", (data) =>
+    connectionHandler.handleJoinRoom(socket, data)
+  );
+  socket.on("room:leave", (data) =>
+    connectionHandler.handleLeaveRoom(socket, data)
+  );
+
+  // Presence events
+  socket.on("presence:update", (data) =>
+    connectionHandler.handlePresenceUpdate(socket, data)
+  );
+
+  // Disconnection
+  socket.on("disconnect", () => connectionHandler.handleDisconnect(socket));
+});
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    connections: io.engine.clientsCount,
+    uptime: process.uptime(),
+  });
+});
+
+const PORT = process.env.PORT || 4000;
+
+httpServer.listen(PORT, () => {
+  logger.info(`WebRTC Signaling Server running on port ${PORT}`);
+});
+```
+
+### WebRTC Handler Implementation
+
+```typescript
+// realtime-service/src/handlers/webrtc.handler.ts
+import { Server, Socket } from "socket.io";
+import { RoomService } from "../services/room.service";
+import { logger } from "../utils/logger";
+
+interface CallData {
+  callId: string;
+  conversationId: string;
+  callType: "audio" | "video";
+  participants: string[];
+}
+
+interface SignalingData {
+  callId: string;
+  from: string;
+  to: string;
+  sdp?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
+}
+
+export class WebRTCHandler {
+  private roomService: RoomService;
+  private activeCalls: Map<string, CallData>;
+
+  constructor(private io: Server) {
+    this.roomService = new RoomService();
+    this.activeCalls = new Map();
+  }
+
+  // Initiate a call
+  async handleCallInitiate(
+    socket: Socket,
+    data: {
+      conversationId: string;
+      callType: "audio" | "video";
+      participants: string[];
+    }
+  ) {
+    try {
+      const callId = this.generateCallId();
+      const callData: CallData = {
+        callId,
+        conversationId: data.conversationId,
+        callType: data.callType,
+        participants: [socket.data.userId, ...data.participants],
+      };
+
+      this.activeCalls.set(callId, callData);
+
+      // Create room for the call
+      await this.roomService.createRoom(callId, callData.participants);
+
+      // Join the initiator to the room
+      socket.join(callId);
+
+      // Notify other participants
+      data.participants.forEach((participantId) => {
+        this.io.to(this.getUserSocketId(participantId)).emit("call:incoming", {
+          callId,
+          from: {
+            userId: socket.data.userId,
+            username: socket.data.username,
+          },
+          conversationId: data.conversationId,
+          callType: data.callType,
+        });
+      });
+
+      logger.info(`Call initiated: ${callId} by ${socket.data.userId}`);
+
+      socket.emit("call:initiated", { callId, status: "ringing" });
+    } catch (error) {
+      logger.error(`Failed to initiate call: ${error.message}`);
+      socket.emit("call:error", { message: "Failed to initiate call" });
+    }
+  }
+
+  // Handle WebRTC offer
+  async handleOffer(socket: Socket, data: SignalingData) {
+    try {
+      const { callId, to, sdp } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        throw new Error("Call not found");
+      }
+
+      // Forward offer to the recipient
+      this.io.to(this.getUserSocketId(to)).emit("call:offer", {
+        callId,
+        from: socket.data.userId,
+        sdp,
+      });
+
+      logger.info(
+        `Offer sent from ${socket.data.userId} to ${to} for call ${callId}`
+      );
+    } catch (error) {
+      logger.error(`Failed to handle offer: ${error.message}`);
+      socket.emit("call:error", { message: "Failed to send offer" });
+    }
+  }
+
+  // Handle WebRTC answer
+  async handleAnswer(socket: Socket, data: SignalingData) {
+    try {
+      const { callId, to, sdp } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        throw new Error("Call not found");
+      }
+
+      // Join the room
+      socket.join(callId);
+
+      // Forward answer to the caller
+      this.io.to(this.getUserSocketId(to)).emit("call:answer", {
+        callId,
+        from: socket.data.userId,
+        sdp,
+      });
+
+      // Update call status
+      const callData = this.activeCalls.get(callId);
+      this.io.to(callId).emit("call:connected", {
+        callId,
+        participants: callData?.participants,
+      });
+
+      logger.info(
+        `Answer sent from ${socket.data.userId} to ${to} for call ${callId}`
+      );
+    } catch (error) {
+      logger.error(`Failed to handle answer: ${error.message}`);
+      socket.emit("call:error", { message: "Failed to send answer" });
+    }
+  }
+
+  // Handle ICE candidates
+  async handleIceCandidate(socket: Socket, data: SignalingData) {
+    try {
+      const { callId, to, candidate } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        throw new Error("Call not found");
+      }
+
+      // Forward ICE candidate to the peer
+      this.io.to(this.getUserSocketId(to)).emit("call:ice-candidate", {
+        callId,
+        from: socket.data.userId,
+        candidate,
+      });
+
+      logger.debug(`ICE candidate sent from ${socket.data.userId} to ${to}`);
+    } catch (error) {
+      logger.error(`Failed to handle ICE candidate: ${error.message}`);
+    }
+  }
+
+  // Handle call end
+  async handleCallEnd(socket: Socket, data: { callId: string }) {
+    try {
+      const { callId } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        return;
+      }
+
+      const callData = this.activeCalls.get(callId);
+
+      // Notify all participants
+      this.io.to(callId).emit("call:ended", {
+        callId,
+        endedBy: socket.data.userId,
+      });
+
+      // Clean up
+      this.activeCalls.delete(callId);
+      await this.roomService.deleteRoom(callId);
+
+      // Make all participants leave the room
+      const sockets = await this.io.in(callId).fetchSockets();
+      sockets.forEach((s) => s.leave(callId));
+
+      logger.info(`Call ended: ${callId} by ${socket.data.userId}`);
+    } catch (error) {
+      logger.error(`Failed to end call: ${error.message}`);
+    }
+  }
+
+  // Handle call rejection
+  async handleCallReject(
+    socket: Socket,
+    data: { callId: string; reason?: string }
+  ) {
+    try {
+      const { callId, reason } = data;
+
+      if (!this.activeCalls.has(callId)) {
+        return;
+      }
+
+      const callData = this.activeCalls.get(callId);
+
+      // Notify the caller
+      this.io.to(callId).emit("call:rejected", {
+        callId,
+        rejectedBy: socket.data.userId,
+        reason: reason || "Call declined",
+      });
+
+      // Clean up if no one else in call
+      const sockets = await this.io.in(callId).fetchSockets();
+      if (sockets.length <= 1) {
+        this.activeCalls.delete(callId);
+        await this.roomService.deleteRoom(callId);
+      }
+
+      logger.info(`Call rejected: ${callId} by ${socket.data.userId}`);
+    } catch (error) {
+      logger.error(`Failed to reject call: ${error.message}`);
+    }
+  }
+
+  // Handle audio toggle
+  handleToggleAudio(
+    socket: Socket,
+    data: { callId: string; enabled: boolean }
+  ) {
+    const { callId, enabled } = data;
+
+    socket.to(callId).emit("peer:audio-toggled", {
+      peerId: socket.data.userId,
+      enabled,
+    });
+
+    logger.debug(
+      `Audio ${enabled ? "enabled" : "disabled"} by ${socket.data.userId}`
+    );
+  }
+
+  // Handle video toggle
+  handleToggleVideo(
+    socket: Socket,
+    data: { callId: string; enabled: boolean }
+  ) {
+    const { callId, enabled } = data;
+
+    socket.to(callId).emit("peer:video-toggled", {
+      peerId: socket.data.userId,
+      enabled,
+    });
+
+    logger.debug(
+      `Video ${enabled ? "enabled" : "disabled"} by ${socket.data.userId}`
+    );
+  }
+
+  // Handle screen share start
+  handleScreenShareStart(socket: Socket, data: { callId: string }) {
+    const { callId } = data;
+
+    socket.to(callId).emit("screen:sharing-started", {
+      peerId: socket.data.userId,
+    });
+
+    logger.info(`Screen sharing started by ${socket.data.userId}`);
+  }
+
+  // Handle screen share stop
+  handleScreenShareStop(socket: Socket, data: { callId: string }) {
+    const { callId } = data;
+
+    socket.to(callId).emit("screen:sharing-stopped", {
+      peerId: socket.data.userId,
+    });
+
+    logger.info(`Screen sharing stopped by ${socket.data.userId}`);
+  }
+
+  private generateCallId(): string {
+    return `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private getUserSocketId(userId: string): string {
+    // Implementation to get socket ID from user ID
+    // This would query Redis or in-memory store
+    return `user:${userId}`;
+  }
+}
+```
+
+### Chat Handler Implementation
+
+```typescript
+// realtime-service/src/handlers/chat.handler.ts
+import { Server, Socket } from "socket.io";
+import { logger } from "../utils/logger";
+
+export class ChatHandler {
+  constructor(private io: Server) {}
+
+  async handleMessage(
+    socket: Socket,
+    data: {
+      conversationId: string;
+      content: string;
+      messageType: string;
+      tempId: string;
+    }
+  ) {
+    try {
+      const message = {
+        id: this.generateMessageId(),
+        tempId: data.tempId,
+        conversationId: data.conversationId,
+        senderId: socket.data.userId,
+        senderName: socket.data.username,
+        content: data.content,
+        messageType: data.messageType,
+        timestamp: new Date().toISOString(),
+        status: "sent",
+      };
+
+      // Emit to conversation room
+      this.io
+        .to(`conversation:${data.conversationId}`)
+        .emit("message:new", message);
+
+      // Acknowledge to sender
+      socket.emit("message:sent", {
+        tempId: data.tempId,
+        messageId: message.id,
+      });
+
+      logger.info(`Message sent in conversation ${data.conversationId}`);
+    } catch (error) {
+      logger.error(`Failed to handle message: ${error.message}`);
+      socket.emit("message:error", {
+        tempId: data.tempId,
+        error: "Failed to send message",
+      });
+    }
+  }
+
+  handleTyping(
+    socket: Socket,
+    data: { conversationId: string; isTyping: boolean }
+  ) {
+    socket.to(`conversation:${data.conversationId}`).emit("user:typing", {
+      userId: socket.data.userId,
+      username: socket.data.username,
+      conversationId: data.conversationId,
+      isTyping: data.isTyping,
+    });
+  }
+
+  handleRead(
+    socket: Socket,
+    data: { conversationId: string; messageIds: string[] }
+  ) {
+    socket.to(`conversation:${data.conversationId}`).emit("messages:read", {
+      userId: socket.data.userId,
+      conversationId: data.conversationId,
+      messageIds: data.messageIds,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  private generateMessageId(): string {
+    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+```
+
+### TURN/STUN Server Configuration (Coturn)
+
+```yaml
+# docker/coturn/turnserver.conf
+listening-port=3478
+tls-listening-port=5349
+
+min-port=49152
+max-port=65535
+
+fingerprint
+lt-cred-mech
+
+realm=yourdomain.com
+server-name=yourdomain.com
+
+# User credentials for TURN
+user=username:password
+
+# SSL certificates
+cert=/etc/coturn/certs/cert.pem
+pkey=/etc/coturn/certs/key.pem
+
+# Logging
+log-file=/var/log/coturn/turnserver.log
+verbose
+
+# No multicast
+no-multicast-peers
+
+# Relay settings
+no-tcp-relay
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+```
+
+### Docker Compose for Real-time Service
+
+```yaml
+# docker-compose.realtime.yml
+version: "3.8"
+
+services:
+  realtime-service:
+    build:
+      context: ./realtime-service
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      TURN_SERVER_URL: turn:${TURN_SERVER}:3478
+      TURN_USERNAME: ${TURN_USERNAME}
+      TURN_PASSWORD: ${TURN_PASSWORD}
+    depends_on:
+      - redis
+      - coturn
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  coturn:
+    image: coturn/coturn:latest
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+      - "5349:5349/udp"
+      - "49152-65535:49152-65535/udp"
+    volumes:
+      - ./docker/coturn/turnserver.conf:/etc/coturn/turnserver.conf
+      - ./docker/coturn/certs:/etc/coturn/certs
+    environment:
+      TURN_USERNAME: ${TURN_USERNAME}
+      TURN_PASSWORD: ${TURN_PASSWORD}
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_realtime_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis_realtime_data:
+```
+
+### Flutter WebRTC Implementation
+
+```dart
+// lib/data/services/webrtc_service.dart
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+
+class WebRTCService {
+  final IO.Socket socket;
+  final Map<String, RTCPeerConnection> _peerConnections = {};
+  final Map<String, MediaStream> _remoteStreams = {};
+
+  MediaStream? _localStream;
+  bool _isAudioEnabled = true;
+  bool _isVideoEnabled = true;
+
+  WebRTCService(this.socket) {
+    _setupSocketListeners();
+  }
+
+  // ICE servers configuration (STUN/TURN)
+  Map<String, dynamic> get _iceServers => {
+    'iceServers': [
+      {
+        'urls': ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302']
+      },
+      {
+        'urls': ['turn:${AppConfig.turnServer}:3478'],
+        'username': AppConfig.turnUsername,
+        'credential': AppConfig.turnPassword,
+      },
+    ],
+    'iceCandidatePoolSize': 10,
+  };
+
+  void _setupSocketListeners() {
+    socket.on('call:incoming', _handleIncomingCall);
+    socket.on('call:offer', _handleOffer);
+    socket.on('call:answer', _handleAnswer);
+    socket.on('call:ice-candidate', _handleIceCandidate);
+    socket.on('call:ended', _handleCallEnded);
+    socket.on('call:rejected', _handleCallRejected);
+    socket.on('peer:audio-toggled', _handlePeerAudioToggled);
+    socket.on('peer:video-toggled', _handlePeerVideoToggled);
+    socket.on('screen:sharing-started', _handleScreenShareStarted);
+    socket.on('screen:sharing-stopped', _handleScreenShareStopped);
+  }
+
+  // Initialize local media stream
+  Future<MediaStream> initializeLocalStream({
+    bool audio = true,
+    bool video = true,
+  }) async {
+    final constraints = {
+      'audio': audio,
+      'video': video
+          ? {
+              'mandatory': {
+                'minWidth': '640',
+                'minHeight': '480',
+                'minFrameRate': '30',
+              },
+              'facingMode': 'user',
+              'optional': [],
+            }
+          : false,
+    };
+
+    _localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    _isAudioEnabled = audio;
+    _isVideoEnabled = video;
+
+    return _localStream!;
+  }
+
+  // Initiate a call
+  Future<void> initiateCall({
+    required String conversationId,
+    required List<String> participants,
+    required CallType callType,
+  }) async {
+    socket.emit('call:initiate', {
+      'conversationId': conversationId,
+      'participants': participants,
+      'callType': callType.name,
+    });
+  }
+
+  // Create peer connection for a specific peer
+  Future<RTCPeerConnection> _createPeerConnection(String peerId) async {
+    final pc = await createPeerConnection(_iceServers);
+
+    // Add local stream tracks
+    if (_localStream != null) {
+      _localStream!.getTracks().forEach((track) {
+        pc.addTrack(track, _localStream!);
+      });
+    }
+
+    // Handle ICE candidates
+    pc.onIceCandidate = (candidate) {
+      if (candidate != null) {
+        socket.emit('call:ice-candidate', {
+          'to': peerId,
+          'candidate': {
+            'candidate': candidate.candidate,
+            'sdpMid': candidate.sdpMid,
+            'sdpMLineIndex': candidate.sdpMLineIndex,
+          },
+        });
+      }
+    };
+
+    // Handle remote stream
+    pc.onTrack = (event) {
+      if (event.streams.isNotEmpty) {
+        _remoteStreams[peerId] = event.streams[0];
+        _onRemoteStreamAdded?.call(peerId, event.streams[0]);
+      }
+    };
+
+    // Handle connection state changes
+    pc.onConnectionState = (state) {
+      print('Connection state for $peerId: $state');
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        _handleConnectionFailure(peerId);
+      }
+    };
+
+    _peerConnections[peerId] = pc;
+    return pc;
+  }
+
+  // Handle incoming call
+  void _handleIncomingCall(dynamic data) {
+    final callId = data['callId'];
+    final from = data['from'];
+    final callType = data['callType'];
+
+    _onIncomingCall?.call(
+      callId: callId,
+      from: from,
+      callType: callType == 'video' ? CallType.video : CallType.audio,
+    );
+  }
+
+  // Accept incoming call
+  Future<void> acceptCall(String callId) async {
+    await initializeLocalStream(audio: true, video: true);
+
+    socket.emit('call:accept', {'callId': callId});
+  }
+
+  // Reject incoming call
+  void rejectCall(String callId, {String? reason}) {
+    socket.emit('call:reject', {
+      'callId': callId,
+      'reason': reason,
+    });
+  }
+
+  // Handle WebRTC offer
+  Future<void> _handleOffer(dynamic data) async {
+    final from = data['from'];
+    final sdp = data['sdp'];
+
+    final pc = await _createPeerConnection(from);
+
+    await pc.setRemoteDescription(
+      RTCSessionDescription(sdp['sdp'], sdp['type']),
+    );
+
+    final answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    socket.emit('call:answer', {
+      'to': from,
+      'sdp': {
+        'type': answer.type,
+        'sdp': answer.sdp,
+      },
+    });
+  }
+
+  // Handle WebRTC answer
+  Future<void> _handleAnswer(dynamic data) async {
+    final from = data['from'];
+    final sdp = data['sdp'];
+
+    final pc = _peerConnections[from];
+    if (pc != null) {
+      await pc.setRemoteDescription(
+        RTCSessionDescription(sdp['sdp'], sdp['type']),
+      );
+    }
+  }
+
+  // Handle ICE candidate
+  Future<void> _handleIceCandidate(dynamic data) async {
+    final from = data['from'];
+    final candidateData = data['candidate'];
+
+    final pc = _peerConnections[from];
+    if (pc != null) {
+      final candidate = RTCIceCandidate(
+        candidateData['candidate'],
+        candidateData['sdpMid'],
+        candidateData['sdpMLineIndex'],
+      );
+      await pc.addCandidate(candidate);
+    }
+  }
+
+  // Create and send offer
+  Future<void> createOffer(String peerId) async {
+    final pc = await _createPeerConnection(peerId);
+
+    final offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    socket.emit('call:offer', {
+      'to': peerId,
+      'sdp': {
+        'type': offer.type,
+        'sdp': offer.sdp,
+      },
+    });
+  }
+
+  // Toggle audio
+  Future<void> toggleAudio(String callId) async {
+    _isAudioEnabled = !_isAudioEnabled;
+
+    _localStream?.getAudioTracks().forEach((track) {
+      track.enabled = _isAudioEnabled;
+    });
+
+    socket.emit('media:toggle-audio', {
+      'callId': callId,
+      'enabled': _isAudioEnabled,
+    });
+  }
+
+  // Toggle video
+  Future<void> toggleVideo(String callId) async {
+    _isVideoEnabled = !_isVideoEnabled;
+
+    _localStream?.getVideoTracks().forEach((track) {
+      track.enabled = _isVideoEnabled;
+    });
+
+    socket.emit('media:toggle-video', {
+      'callId': callId,
+      'enabled': _isVideoEnabled,
+    });
+  }
+
+  // Switch camera
+  Future<void> switchCamera() async {
+    if (_localStream != null) {
+      final videoTrack = _localStream!.getVideoTracks().first;
+      await Helper.switchCamera(videoTrack);
+    }
+  }
+
+  // Start screen sharing
+  Future<void> startScreenShare(String callId) async {
+    final screenStream = await navigator.mediaDevices.getDisplayMedia({
+      'video': true,
+    });
+
+    final screenTrack = screenStream.getVideoTracks().first;
+
+    // Replace video track in all peer connections
+    for (var pc in _peerConnections.values) {
+      final senders = await pc.getSenders();
+      final videoSender = senders.firstWhere(
+        (sender) => sender.track?.kind == 'video',
+      );
+      await videoSender.replaceTrack(screenTrack);
+    }
+
+    socket.emit('screen:share-start', {'callId': callId});
+
+    // Handle screen share stop
+    screenTrack.onEnded = () {
+      stopScreenShare(callId);
+    };
+  }
+
+  // Stop screen sharing
+  Future<void> stopScreenShare(String callId) async {
+    if (_localStream != null) {
+      final videoTrack = _localStream!.getVideoTracks().first;
+
+      // Replace back to camera track
+      for (var pc in _peerConnections.values) {
+        final senders = await pc.getSenders();
+        final videoSender = senders.firstWhere(
+          (sender) => sender.track?.kind == 'video',
+        );
+        await videoSender.replaceTrack(videoTrack);
+      }
+
+      socket.emit('screen:share-stop', {'callId': callId});
+    }
+  }
+
+  // End call
+  Future<void> endCall(String callId) async {
+    socket.emit('call:end', {'callId': callId});
+    await _cleanup();
+  }
+
+  // Handle call ended
+  void _handleCallEnded(dynamic data) async {
+    await _cleanup();
+    _onCallEnded?.call(data['callId'], data['endedBy']);
+  }
+
+  // Handle call rejected
+  void _handleCallRejected(dynamic data) async {
+    await _cleanup();
+    _onCallRejected?.call(data['callId'], data['rejectedBy'], data['reason']);
+  }
+
+  // Handle peer audio toggled
+  void _handlePeerAudioToggled(dynamic data) {
+    _onPeerAudioToggled?.call(data['peerId'], data['enabled']);
+  }
+
+  // Handle peer video toggled
+  void _handlePeerVideoToggled(dynamic data) {
+    _onPeerVideoToggled?.call(data['peerId'], data['enabled']);
+  }
+
+  // Handle screen sharing started
+  void _handleScreenShareStarted(dynamic data) {
+    _onScreenShareStarted?.call(data['peerId']);
+  }
+
+  // Handle screen sharing stopped
+  void _handleScreenShareStopped(dynamic data) {
+    _onScreenShareStopped?.call(data['peerId']);
+  }
+
+  // Handle connection failure
+  Future<void> _handleConnectionFailure(String peerId) async {
+    print('Connection failed for peer: $peerId');
+    // Attempt to reconnect or notify user
+  }
+
+  // Cleanup resources
+  Future<void> _cleanup() async {
+    // Close all peer connections
+    for (var pc in _peerConnections.values) {
+      await pc.close();
+    }
+    _peerConnections.clear();
+
+    // Stop local stream
+    _localStream?.getTracks().forEach((track) {
+      track.stop();
+    });
+    _localStream?.dispose();
+    _localStream = null;
+
+    // Clear remote streams
+    _remoteStreams.clear();
+  }
+
+  // Callbacks
+  Function(String callId, Map<String, dynamic> from, CallType callType)? _onIncomingCall;
+  Function(String peerId, MediaStream stream)? _onRemoteStreamAdded;
+  Function(String callId, String endedBy)? _onCallEnded;
+  Function(String callId, String rejectedBy, String? reason)? _onCallRejected;
+  Function(String peerId, bool enabled)? _onPeerAudioToggled;
+  Function(String peerId, bool enabled)? _onPeerVideoToggled;
+  Function(String peerId)? _onScreenShareStarted;
+  Function(String peerId)? _onScreenShareStopped;
+
+  set onIncomingCall(Function(String, Map<String, dynamic>, CallType) callback) {
+    _onIncomingCall = callback;
+  }
+
+  set onRemoteStreamAdded(Function(String, MediaStream) callback) {
+    _onRemoteStreamAdded = callback;
+  }
+
+  set onCallEnded(Function(String, String) callback) {
+    _onCallEnded = callback;
+  }
+
+  set onCallRejected(Function(String, String, String?) callback) {
+    _onCallRejected = callback;
+  }
+
+  set onPeerAudioToggled(Function(String, bool) callback) {
+    _onPeerAudioToggled = callback;
+  }
+
+  set onPeerVideoToggled(Function(String, bool) callback) {
+    _onPeerVideoToggled = callback;
+  }
+
+  set onScreenShareStarted(Function(String) callback) {
+    _onScreenShareStarted = callback;
+  }
+
+  set onScreenShareStopped(Function(String) callback) {
+    _onScreenShareStopped = callback;
+  }
+
+  // Dispose
+  void dispose() {
+    _cleanup();
+  }
+}
+
+enum CallType { audio, video }
+```
+
+### Video Call Screen UI
+
+```dart
+// lib/presentation/screens/call/video_call_screen.dart
+class VideoCallScreen extends ConsumerStatefulWidget {
+  final String callId;
+  final CallType callType;
+
+  const VideoCallScreen({
+    required this.callId,
+    required this.callType,
+    super.key,
+  });
+
+  @override
+  ConsumerState<VideoCallScreen> createState() => _VideoCallScreenState();
+}
+
+class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
+  final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
+  final Map<String, RTCVideoRenderer> _remoteRenderers = {};
+
+  bool _isAudioEnabled = true;
+  bool _isVideoEnabled = true;
+  bool _isScreenSharing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeRenderers();
+    _setupCall();
+  }
+
+  Future<void> _initializeRenderers() async {
+    await _localRenderer.initialize();
+  }
+
+  Future<void> _setupCall() async {
+    final webrtcService = ref.read(webrtcServiceProvider);
+
+    // Initialize local stream
+    final localStream = await webrtcService.initializeLocalStream(
+      audio: true,
+      video: widget.callType == CallType.video,
+    );
+
+    _localRenderer.srcObject = localStream;
+
+    // Setup callbacks
+    webrtcService.onRemoteStreamAdded = _handleRemoteStreamAdded;
+    webrtcService.onCallEnded = _handleCallEnded;
+    webrtcService.onPeerAudioToggled = _handlePeerAudioToggled;
+    webrtcService.onPeerVideoToggled = _handlePeerVideoToggled;
+
+    setState(() {});
+  }
+
+  void _handleRemoteStreamAdded(String peerId, MediaStream stream) async {
+    final renderer = RTCVideoRenderer();
+    await renderer.initialize();
+    renderer.srcObject = stream;
+
+    setState(() {
+      _remoteRenderers[peerId] = renderer;
+    });
+  }
+
+  void _handleCallEnded(String callId, String endedBy) {
+    Navigator.of(context).pop();
+  }
+
+  void _handlePeerAudioToggled(String peerId, bool enabled) {
+    // Update UI to show peer's audio status
+    setState(() {});
+  }
+
+  void _handlePeerVideoToggled(String peerId, bool enabled) {
+    // Update UI to show peer's video status
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Remote video (full screen)
+          if (_remoteRenderers.isNotEmpty)
+            GridView.builder(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: _remoteRenderers.length > 2 ? 2 : 1,
+                childAspectRatio: 16 / 9,
+              ),
+              itemCount: _remoteRenderers.length,
+              itemBuilder: (context, index) {
+                final entry = _remoteRenderers.entries.elementAt(index);
+                return RTCVideoView(entry.value, mirror: false);
+              },
+            )
+          else
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircleAvatar(radius: 50, child: Icon(Icons.person, size: 50)),
+                  const SizedBox(height: 20),
+                  const Text('Calling...', style: TextStyle(color: Colors.white, fontSize: 20)),
+                ],
+              ),
+            ),
+
+          // Local video (picture-in-picture)
+          Positioned(
+            top: 50,
+            right: 20,
+            child: GestureDetector(
+              onTap: _switchCamera,
+              child: Container(
+                width: 120,
+                height: 160,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: RTCVideoView(_localRenderer, mirror: true),
+                ),
+              ),
+            ),
+          ),
+
+          // Call controls
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // Toggle audio
+                _buildControlButton(
+                  icon: _isAudioEnabled ? Icons.mic : Icons.mic_off,
+                  onPressed: _toggleAudio,
+                  backgroundColor: _isAudioEnabled ? Colors.white24 : Colors.red,
+                ),
+
+                // Toggle video
+                if (widget.callType == CallType.video)
+                  _buildControlButton(
+                    icon: _isVideoEnabled ? Icons.videocam : Icons.videocam_off,
+                    onPressed: _toggleVideo,
+                    backgroundColor: _isVideoEnabled ? Colors.white24 : Colors.red,
+                  ),
+
+                // End call
+                _buildControlButton(
+                  icon: Icons.call_end,
+                  onPressed: _endCall,
+                  backgroundColor: Colors.red,
+                  size: 60,
+                ),
+
+                // Screen share
+                _buildControlButton(
+                  icon: _isScreenSharing ? Icons.stop_screen_share : Icons.screen_share,
+                  onPressed: _toggleScreenShare,
+                  backgroundColor: _isScreenSharing ? Colors.green : Colors.white24,
+                ),
+
+                // Switch camera
+                if (widget.callType == CallType.video)
+                  _buildControlButton(
+                    icon: Icons.flip_camera_ios,
+                    onPressed: _switchCamera,
+                    backgroundColor: Colors.white24,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildControlButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required Color backgroundColor,
+    double size = 50,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white, size: size * 0.5),
+      ),
+    );
+  }
+
+  Future<void> _toggleAudio() async {
+    final webrtcService = ref.read(webrtcServiceProvider);
+    await webrtcService.toggleAudio(widget.callId);
+    setState(() {
+      _isAudioEnabled = !_isAudioEnabled;
+    });
+  }
+
+  Future<void> _toggleVideo() async {
+    final webrtcService = ref.read(webrtcServiceProvider);
+    await webrtcService.toggleVideo(widget.callId);
+    setState(() {
+      _isVideoEnabled = !_isVideoEnabled;
+    });
+  }
+
+  Future<void> _toggleScreenShare() async {
+    final webrtcService = ref.read(webrtcServiceProvider);
+
+    if (_isScreenSharing) {
+      await webrtcService.stopScreenShare(widget.callId);
+    } else {
+      await webrtcService.startScreenShare(widget.callId);
+    }
+
+    setState(() {
+      _isScreenSharing = !_isScreenSharing;
+    });
+  }
+
+  Future<void> _switchCamera() async {
+    final webrtcService = ref.read(webrtcServiceProvider);
+    await webrtcService.switchCamera();
+  }
+
+  Future<void> _endCall() async {
+    final webrtcService = ref.read(webrtcServiceProvider);
+    await webrtcService.endCall(widget.callId);
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _localRenderer.dispose();
+    for (var renderer in _remoteRenderers.values) {
+      renderer.dispose();
+    }
+    super.dispose();
+  }
+}
+```
+
+### Update Backend Integration
+
+```typescript
+// backend/src/modules/calls/calls.gateway.ts
+import { WebSocketGateway, WebSocketServer } from "@nestjs/websockets";
+import { Server } from "socket.io";
+
+@WebSocketGateway({ namespace: "/calls", cors: true })
+export class CallsGateway {
+  @WebSocketServer()
+  server: Server;
+
+  // Forward signaling to realtime service
+  async forwardToRealtimeService(event: string, data: any) {
+    // This gateway acts as a bridge between main backend and realtime service
+    // In production, clients connect directly to realtime service
+  }
+}
+```
+
+### Updated Environment Variables
+
+```env
+# Real-time Service
+REALTIME_SERVICE_URL=http://localhost:4000
+REALTIME_SERVICE_WS_URL=ws://localhost:4000
+
+# TURN/STUN Configuration
+TURN_SERVER=turn.yourdomain.com
+TURN_USERNAME=your-turn-username
+TURN_PASSWORD=your-turn-password
+STUN_SERVER=stun:stun.l.google.com:19302
+```
+
+---
+
+## Final Notes
+
+This comprehensive prompt provides a complete, production-ready chat application architecture with:
+
+✅ **Zero-Bug Focus**: Strict TypeScript, comprehensive error handling, extensive testing
+✅ **Industry Standards**: Clean architecture, SOLID principles, proper design patterns
+✅ **Scalability**: Horizontal scaling ready, caching, message queues
+✅ **Security**: JWT auth, encryption, rate limiting, input validation
+✅ **Performance**: Optimized queries, lazy loading, caching strategies
+✅ **Real-time**: WebSocket + WebRTC in dedicated microservice
+✅ **WebRTC Implementation**: Native peer-to-peer video/audio calls with TURN/STUN
+✅ **AI Features**: Smart replies, translation, transcription, and premium AI features
+✅ **Subscription Model**: Free and premium tiers with feature gating
+✅ **Complete Features**: All requested features from Slack, WhatsApp, Teams, Instagram
+✅ **Open Source**: 100% free and open-source technologies
+✅ **Production Ready**: Docker, CI/CD, monitoring, logging
+✅ **Well Documented**: API docs, code comments, architecture diagrams
+✅ **Best Practices**: Comprehensive coding rules and standards for bug-free code
+
+The codebase follows professional standards with:
+
+- Proper error boundaries
+- Graceful degradation
+- Offline support
+- Type safety
+- Comprehensive testing
+- Security best practices
+- Performance optimization
+- Clean code principles
+- Microservice architecture for real-time features
+
+**Key Improvements Over Jitsi:**
+
+- Complete control over video/audio quality
+- No third-party dependencies
+- Lower latency with P2P connections
+- Custom UI/UX
+- Better integration with app features
+- Cost savings (no Jitsi hosting needed)
+- Dedicated scalable real-time microservice
+
+**Remember**: Always test thoroughly, monitor in production, and iterate based on user feedback!# Comprehensive Enterprise Chat Application - Complete Development Guide
 
 ## Project Overview
+
 Build a production-ready, enterprise-grade messaging and collaboration platform combining features from Slack, Zoho Cliq, WhatsApp, Instagram, and Microsoft Teams. The application must be fully functional, scalable, secure, and bug-free using Flutter for cross-platform frontend and NestJS for backend with all open-source technologies.
 
 ---
@@ -8,6 +3001,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 ## Tech Stack Requirements
 
 ### Frontend
+
 - **Framework**: Flutter (latest stable version)
 - **State Management**: Riverpod 2.x or Bloc 8.x
 - **Local Storage**: Hive or Drift (SQLite)
@@ -19,6 +3013,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 - **UI**: Material Design 3 with custom theming
 
 ### Backend
+
 - **Framework**: NestJS (latest LTS)
 - **Language**: TypeScript (strict mode)
 - **Database**: PostgreSQL 15+ with TypeORM
@@ -34,6 +3029,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 - **Testing**: Jest, Supertest
 
 ### DevOps & Infrastructure
+
 - **Containerization**: Docker + Docker Compose
 - **Reverse Proxy**: Nginx
 - **SSL**: Let's Encrypt with Certbot
@@ -45,6 +3041,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 ## Core Features to Implement
 
 ### 1. Authentication & User Management
+
 - Email/password registration with email verification
 - Phone number authentication with OTP
 - Multi-factor authentication (TOTP)
@@ -56,6 +3053,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 - Account deletion with data export
 
 ### 2. Messaging Features
+
 - **One-on-One Chat**
   - Text messages with markdown support
   - Emoji reactions (multiple per message)
@@ -63,7 +3061,6 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
   - Message editing and deletion
   - Forward messages
   - Copy, select, and bulk operations
-  
 - **Group Chats**
   - Create groups with up to 256 members
   - Group admins and roles (admin, moderator, member)
@@ -73,13 +3070,11 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
   - Mute notifications per group
   - Pin important messages
   - Group invite links
-  
 - **Channels (Broadcast)**
   - One-way broadcast channels
   - Unlimited subscribers
   - Admin-only posting
   - Channel verification badge
-  
 - **Message Types**
   - Text with rich formatting
   - Images (single and albums)
@@ -94,6 +3089,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
   - Stickers and custom emoji packs
 
 ### 3. Real-Time Features
+
 - Online/offline status indicators
 - Typing indicators
 - Message delivery status (sent, delivered, read)
@@ -103,6 +3099,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 - Presence system (online, away, do not disturb, offline)
 
 ### 4. Video & Voice Calls
+
 - **Jitsi Integration**
   - One-on-one video calls
   - Group video calls (up to 50 participants)
@@ -117,6 +3114,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
   - Breakout rooms (optional)
 
 ### 5. Workspace/Organization Features
+
 - Create and manage workspaces
 - Workspace channels (public and private)
 - Department/team organization
@@ -127,6 +3125,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 - SSO for enterprise (SAML 2.0)
 
 ### 6. File Management
+
 - File upload with drag-and-drop
 - Multiple file selection
 - File preview (images, videos, PDFs)
@@ -138,6 +3137,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 - Thumbnail generation
 
 ### 7. Search & Discovery
+
 - Global search (messages, files, contacts)
 - Filter by date, sender, file type
 - Search within conversation
@@ -147,6 +3147,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 - Advanced filters (boolean operators)
 
 ### 8. Notifications
+
 - Push notifications (FCM/OneSignal)
 - In-app notifications
 - Notification preferences per chat
@@ -156,6 +3157,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 - Email notifications for missed messages
 
 ### 9. Stories/Status Updates (Instagram-style)
+
 - 24-hour disappearing stories
 - Photo/video/text stories
 - Story viewers list
@@ -164,6 +3166,7 @@ Build a production-ready, enterprise-grade messaging and collaboration platform 
 - Story highlights
 
 ### 10. Advanced Features
+
 - End-to-end encryption option (Signal Protocol)
 - Self-destructing messages
 - Screenshot detection
@@ -851,6 +3854,7 @@ CREATE INDEX idx_users_username ON users(username);
 ### Backend (NestJS) Standards
 
 #### 1. Code Structure & Organization
+
 ```typescript
 // ✅ CORRECT: Proper dependency injection and separation of concerns
 @Injectable()
@@ -860,33 +3864,40 @@ export class MessagesService {
     private readonly messageRepository: Repository<Message>,
     private readonly conversationService: ConversationService,
     private readonly notificationService: NotificationService,
-    private readonly cacheManager: Cache,
+    private readonly cacheManager: Cache
   ) {}
 
-  async createMessage(dto: CreateMessageDto, userId: string): Promise<MessageResponseDto> {
+  async createMessage(
+    dto: CreateMessageDto,
+    userId: string
+  ): Promise<MessageResponseDto> {
     // Validate conversation access
-    await this.conversationService.validateUserAccess(dto.conversationId, userId);
-    
+    await this.conversationService.validateUserAccess(
+      dto.conversationId,
+      userId
+    );
+
     // Create message
     const message = this.messageRepository.create({
       ...dto,
       senderId: userId,
     });
-    
+
     await this.messageRepository.save(message);
-    
+
     // Invalidate cache
     await this.cacheManager.del(`conversation:${dto.conversationId}:messages`);
-    
+
     // Send notification asynchronously
     this.notificationService.notifyNewMessage(message).catch(console.error);
-    
+
     return this.toResponseDto(message);
   }
 }
 ```
 
 #### 2. Error Handling
+
 ```typescript
 // Custom exception filters
 @Catch()
@@ -899,7 +3910,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
+    let message = "Internal server error";
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -919,6 +3930,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 ```
 
 #### 3. Validation with DTOs
+
 ```typescript
 // DTOs with proper validation
 export class CreateMessageDto {
@@ -949,6 +3961,7 @@ export class CreateMessageDto {
 ```
 
 #### 4. Database Transactions
+
 ```typescript
 async deleteMessage(messageId: string, userId: string): Promise<void> {
   await this.dataSource.transaction(async (manager) => {
@@ -975,16 +3988,17 @@ async deleteMessage(messageId: string, userId: string): Promise<void> {
 ```
 
 #### 5. Caching Strategy
+
 ```typescript
 @Injectable()
 export class MessagesService {
   async getConversationMessages(
     conversationId: string,
     page: number = 1,
-    limit: number = 50,
+    limit: number = 50
   ): Promise<PaginatedMessagesDto> {
     const cacheKey = `conversation:${conversationId}:messages:${page}:${limit}`;
-    
+
     // Try to get from cache
     const cached = await this.cacheManager.get<PaginatedMessagesDto>(cacheKey);
     if (cached) return cached;
@@ -992,10 +4006,10 @@ export class MessagesService {
     // Fetch from database
     const [messages, total] = await this.messageRepository.findAndCount({
       where: { conversationId, isDeleted: false },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: "DESC" },
       skip: (page - 1) * limit,
       take: limit,
-      relations: ['sender', 'reactions', 'media'],
+      relations: ["sender", "reactions", "media"],
     });
 
     const result = {
@@ -1014,18 +4028,21 @@ export class MessagesService {
 ```
 
 #### 6. WebSocket Implementation
+
 ```typescript
 @WebSocketGateway({
-  cors: { origin: '*' },
-  namespace: '/chat',
+  cors: { origin: "*" },
+  namespace: "/chat",
 })
-export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class MessagesGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
   constructor(
     private readonly messagesService: MessagesService,
-    private readonly jwtService: JwtService,
+    private readonly jwtService: JwtService
   ) {}
 
   async handleConnection(client: Socket) {
@@ -1033,45 +4050,53 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       const token = client.handshake.auth.token;
       const payload = await this.jwtService.verifyAsync(token);
       client.data.userId = payload.sub;
-      
+
       // Join user to their conversations
-      const conversations = await this.messagesService.getUserConversations(payload.sub);
-      conversations.forEach(conv => client.join(`conversation:${conv.id}`));
-      
+      const conversations = await this.messagesService.getUserConversations(
+        payload.sub
+      );
+      conversations.forEach((conv) => client.join(`conversation:${conv.id}`));
+
       // Emit online status
-      this.server.emit('user:online', { userId: payload.sub });
+      this.server.emit("user:online", { userId: payload.sub });
     } catch (error) {
       client.disconnect();
     }
   }
 
-  @SubscribeMessage('message:send')
+  @SubscribeMessage("message:send")
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() dto: CreateMessageDto,
+    @MessageBody() dto: CreateMessageDto
   ) {
     try {
-      const message = await this.messagesService.createMessage(dto, client.data.userId);
-      
+      const message = await this.messagesService.createMessage(
+        dto,
+        client.data.userId
+      );
+
       // Emit to conversation room
       this.server
         .to(`conversation:${dto.conversationId}`)
-        .emit('message:new', message);
-      
+        .emit("message:new", message);
+
       return { success: true, data: message };
     } catch (error) {
       return { success: false, error: error.message };
     }
   }
 
-  @SubscribeMessage('typing:start')
+  @SubscribeMessage("typing:start")
   handleTypingStart(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: string },
+    @MessageBody() data: { conversationId: string }
   ) {
     client.broadcast
       .to(`conversation:${data.conversationId}`)
-      .emit('user:typing', { userId: client.data.userId, conversationId: data.conversationId });
+      .emit("user:typing", {
+        userId: client.data.userId,
+        conversationId: data.conversationId,
+      });
   }
 }
 ```
@@ -1079,6 +4104,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 ### Flutter Standards
 
 #### 1. State Management (Riverpod)
+
 ```dart
 // ✅ CORRECT: Proper provider structure
 @riverpod
@@ -1090,10 +4116,10 @@ class MessagesNotifier extends _$MessagesNotifier {
 
   Future<void> sendMessage(CreateMessageDto dto) async {
     state = const AsyncValue.loading();
-    
+
     state = await AsyncValue.guard(() async {
       final message = await ref.read(messageRepositoryProvider).createMessage(dto);
-      
+
       final currentMessages = await future;
       return [message, ...currentMessages];
     });
@@ -1107,6 +4133,7 @@ class MessagesNotifier extends _$MessagesNotifier {
 ```
 
 #### 2. Repository Pattern
+
 ```dart
 // Repository interface
 abstract class MessageRepository {
@@ -1137,17 +4164,17 @@ class MessageRepositoryImpl implements MessageRepository {
           '/conversations/$conversationId/messages',
           queryParameters: {'page': page, 'limit': limit},
         );
-        
+
         final messages = (response.data['data'] as List)
             .map((json) => Message.fromJson(json))
             .toList();
-        
+
         // Cache locally
         await _localDb.cacheMessages(conversationId, messages);
-        
+
         return messages;
       }
-      
+
       // Fallback to local cache
       return _localDb.getMessages(conversationId, page: page, limit: limit);
     } catch (e) {
@@ -1159,6 +4186,7 @@ class MessageRepositoryImpl implements MessageRepository {
 ```
 
 #### 3. Clean Widget Structure
+
 ```dart
 // ✅ CORRECT: Widget composition and separation
 class ChatScreen extends ConsumerStatefulWidget {
@@ -1188,7 +4216,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= 
+    if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent * 0.9) {
       ref.read(messagesProvider(widget.conversationId).notifier).loadMore();
     }
@@ -1223,7 +4251,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   PreferredSizeWidget _buildAppBar() {
     final conversation = ref.watch(conversationProvider(widget.conversationId));
-    
+
     return AppBar(
       title: conversation.when(
         data: (conv) => ConversationAppBarTitle(conversation: conv),
@@ -1261,6 +4289,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 ```
 
 #### 4. Error Handling & Retry Logic
+
 ```dart
 class ApiClient {
   final Dio _dio;
@@ -1314,6 +4343,7 @@ class ApiClient {
 ```
 
 #### 5. Local Database (Drift)
+
 ```dart
 @DriftDatabase(tables: [Messages, Users, Conversations])
 class AppDatabase extends _$AppDatabase {
@@ -1358,18 +4388,19 @@ class AppDatabase extends _$AppDatabase {
 ## Security Implementation
 
 ### 1. JWT Authentication
+
 ```typescript
 // Backend: JWT strategy
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private readonly userService: UserService,
-    configService: ConfigService,
+    configService: ConfigService
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get('JWT_SECRET'),
+      secretOrKey: configService.get("JWT_SECRET"),
     });
   }
 
@@ -1382,8 +4413,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 ```
 
 ### 2. Password Hashing
+
 ```typescript
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from "bcrypt";
 
 @Injectable()
 export class AuthService {
@@ -1399,13 +4431,14 @@ export class AuthService {
 ```
 
 ### 3. Rate Limiting
+
 ```typescript
 // Apply rate limiting
-@Controller('auth')
+@Controller("auth")
 @UseGuards(ThrottlerGuard)
 export class AuthController {
   @Throttle(5, 60) // 5 requests per minute
-  @Post('login')
+  @Post("login")
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
@@ -1413,8 +4446,9 @@ export class AuthController {
 ```
 
 ### 4. Input Sanitization
+
 ```typescript
-import { sanitize } from 'class-sanitizer';
+import { sanitize } from "class-sanitizer";
 
 @Injectable()
 export class ValidationPipe implements PipeTransform {
@@ -1426,6 +4460,7 @@ export class ValidationPipe implements PipeTransform {
 ```
 
 ### 5. E2E Encryption (Flutter - Signal Protocol)
+
 ```dart
 class EncryptionService {
   Future<String> encryptMessage(String message, String recipientPublicKey) async {
@@ -1454,8 +4489,9 @@ class EncryptionService {
 ### Backend Testing
 
 #### Unit Tests
+
 ```typescript
-describe('MessagesService', () => {
+describe("MessagesService", () => {
   let service: MessagesService;
   let repository: Repository<Message>;
 
@@ -1474,30 +4510,31 @@ describe('MessagesService', () => {
     repository = module.get<Repository<Message>>(getRepositoryToken(Message));
   });
 
-  it('should create a message', async () => {
+  it("should create a message", async () => {
     const dto: CreateMessageDto = {
-      conversationId: 'conv-123',
-      content: 'Test message',
+      conversationId: "conv-123",
+      content: "Test message",
       messageType: MessageType.TEXT,
     };
 
-    jest.spyOn(repository, 'create').mockReturnValue({} as Message);
-    jest.spyson(repository, 'save').mockResolvedValue({} as Message);
+    jest.spyOn(repository, "create").mockReturnValue({} as Message);
+    jest.spyson(repository, "save").mockResolvedValue({} as Message);
 
-    const result = await service.createMessage(dto, 'user-123');
-    
+    const result = await service.createMessage(dto, "user-123");
+
     expect(result).toBeDefined();
     expect(repository.create).toHaveBeenCalledWith({
       ...dto,
-      senderId: 'user-123',
+      senderId: "user-123",
     });
   });
 });
 ```
 
 #### Integration Tests
+
 ```typescript
-describe('Messages API (e2e)', () => {
+describe("Messages API (e2e)", () => {
   let app: INestApplication;
   let authToken: string;
 
@@ -1511,25 +4548,25 @@ describe('Messages API (e2e)', () => {
 
     // Login to get auth token
     const response = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ email: 'test@test.com', password: 'password123' });
-    
+      .post("/auth/login")
+      .send({ email: "test@test.com", password: "password123" });
+
     authToken = response.body.accessToken;
   });
 
-  it('/messages (POST) should create a message', () => {
+  it("/messages (POST) should create a message", () => {
     return request(app.getHttpServer())
-      .post('/messages')
-      .set('Authorization', `Bearer ${authToken}`)
+      .post("/messages")
+      .set("Authorization", `Bearer ${authToken}`)
       .send({
-        conversationId: 'conv-123',
-        content: 'Test message',
-        messageType: 'text',
+        conversationId: "conv-123",
+        content: "Test message",
+        messageType: "text",
       })
       .expect(201)
       .expect((res) => {
-        expect(res.body.data).toHaveProperty('id');
-        expect(res.body.data.content).toBe('Test message');
+        expect(res.body.data).toHaveProperty("id");
+        expect(res.body.data.content).toBe("Test message");
       });
   });
 });
@@ -1538,6 +4575,7 @@ describe('Messages API (e2e)', () => {
 ### Flutter Testing
 
 #### Unit Tests
+
 ```dart
 void main() {
   group('MessageRepository', () {
@@ -1573,6 +4611,7 @@ void main() {
 ```
 
 #### Widget Tests
+
 ```dart
 void main() {
   testWidgets('ChatScreen displays messages', (tester) async {
@@ -1608,8 +4647,9 @@ void main() {
 ## Deployment Configuration
 
 ### Docker Compose
+
 ```yaml
-version: '3.8'
+version: "3.8"
 
 services:
   postgres:
@@ -1702,6 +4742,7 @@ volumes:
 ```
 
 ### Backend Dockerfile
+
 ```dockerfile
 FROM node:18-alpine AS builder
 
@@ -1727,6 +4768,7 @@ CMD ["node", "dist/main.js"]
 ```
 
 ### Nginx Configuration
+
 ```nginx
 upstream backend {
     server backend:3000;
@@ -1782,6 +4824,7 @@ server {
 ## Environment Variables
 
 ### Backend (.env)
+
 ```env
 # Application
 NODE_ENV=production
@@ -1842,6 +4885,7 @@ ALLOWED_FILE_TYPES=image/*,video/*,audio/*,application/pdf,application/msword
 ```
 
 ### Flutter (.env)
+
 ```env
 # API Configuration
 API_BASE_URL=https://api.yourdomain.com/api/v1
@@ -1876,6 +4920,7 @@ ENABLE_LOGGING=false
 ### Backend Optimization
 
 #### 1. Database Query Optimization
+
 ```typescript
 // ✅ Use select to fetch only needed fields
 async getMessages(conversationId: string): Promise<Message[]> {
@@ -1926,6 +4971,7 @@ async getMessagesPaginated(
 ```
 
 #### 2. Caching Strategy
+
 ```typescript
 @Injectable()
 export class CacheService {
@@ -1935,7 +4981,7 @@ export class CacheService {
   async getOrSet<T>(
     key: string,
     factory: () => Promise<T>,
-    ttl: number = 300,
+    ttl: number = 300
   ): Promise<T> {
     const cached = await this.cacheManager.get<T>(key);
     if (cached) return cached;
@@ -1948,43 +4994,47 @@ export class CacheService {
   // Invalidate related caches
   async invalidatePattern(pattern: string): Promise<void> {
     const keys = await this.cacheManager.store.keys();
-    const matchingKeys = keys.filter(key => key.includes(pattern));
-    await Promise.all(matchingKeys.map(key => this.cacheManager.del(key)));
+    const matchingKeys = keys.filter((key) => key.includes(pattern));
+    await Promise.all(matchingKeys.map((key) => this.cacheManager.del(key)));
   }
 }
 ```
 
 #### 3. Message Queue for Heavy Operations
+
 ```typescript
-@Processor('media-processing')
+@Processor("media-processing")
 export class MediaProcessor {
-  @Process('generate-thumbnail')
+  @Process("generate-thumbnail")
   async generateThumbnail(job: Job<{ fileUrl: string; mediaId: string }>) {
     const { fileUrl, mediaId } = job.data;
-    
+
     try {
       // Download file
       const buffer = await this.downloadFile(fileUrl);
-      
+
       // Generate thumbnail
       const thumbnail = await sharp(buffer)
-        .resize(300, 300, { fit: 'cover' })
+        .resize(300, 300, { fit: "cover" })
         .jpeg({ quality: 80 })
         .toBuffer();
-      
+
       // Upload thumbnail
-      const thumbnailUrl = await this.storageService.upload(thumbnail, 'thumbnails');
-      
+      const thumbnailUrl = await this.storageService.upload(
+        thumbnail,
+        "thumbnails"
+      );
+
       // Update media record
       await this.mediaRepository.update(mediaId, { thumbnailUrl });
-      
+
       return { success: true, thumbnailUrl };
     } catch (error) {
       throw new Error(`Thumbnail generation failed: ${error.message}`);
     }
   }
 
-  @Process('compress-video')
+  @Process("compress-video")
   async compressVideo(job: Job<{ fileUrl: string; mediaId: string }>) {
     // Implement video compression using FFmpeg
     // This is a CPU-intensive operation that should run in background
@@ -1993,14 +5043,15 @@ export class MediaProcessor {
 ```
 
 #### 4. WebSocket Connection Pooling
+
 ```typescript
 @WebSocketGateway()
 export class OptimizedGateway {
   private userSockets = new Map<string, Set<string>>(); // userId -> Set of socketIds
-  
+
   handleConnection(client: Socket) {
     const userId = client.data.userId;
-    
+
     if (!this.userSockets.has(userId)) {
       this.userSockets.set(userId, new Set());
     }
@@ -2010,7 +5061,7 @@ export class OptimizedGateway {
   handleDisconnect(client: Socket) {
     const userId = client.data.userId;
     const sockets = this.userSockets.get(userId);
-    
+
     if (sockets) {
       sockets.delete(client.id);
       if (sockets.size === 0) {
@@ -2025,7 +5076,7 @@ export class OptimizedGateway {
   emitToUser(userId: string, event: string, data: any) {
     const sockets = this.userSockets.get(userId);
     if (sockets) {
-      sockets.forEach(socketId => {
+      sockets.forEach((socketId) => {
         this.server.to(socketId).emit(event, data);
       });
     }
@@ -2036,6 +5087,7 @@ export class OptimizedGateway {
 ### Flutter Optimization
 
 #### 1. Lazy Loading & Pagination
+
 ```dart
 class MessagesListView extends ConsumerStatefulWidget {
   final String conversationId;
@@ -2061,7 +5113,7 @@ class _MessagesListViewState extends ConsumerState<MessagesListView> {
 
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
-    
+
     if (currentScroll >= maxScroll * 0.9) {
       _loadMore();
     }
@@ -2069,11 +5121,11 @@ class _MessagesListViewState extends ConsumerState<MessagesListView> {
 
   Future<void> _loadMore() async {
     setState(() => _isLoadingMore = true);
-    
+
     await ref
         .read(messagesProvider(widget.conversationId).notifier)
         .loadMore();
-    
+
     setState(() => _isLoadingMore = false);
   }
 
@@ -2090,7 +5142,7 @@ class _MessagesListViewState extends ConsumerState<MessagesListView> {
           if (index == messages.length) {
             return const Center(child: CircularProgressIndicator());
           }
-          
+
           return MessageBubble(
             message: messages[index],
             key: ValueKey(messages[index].id),
@@ -2105,6 +5157,7 @@ class _MessagesListViewState extends ConsumerState<MessagesListView> {
 ```
 
 #### 2. Image Caching & Optimization
+
 ```dart
 class OptimizedImageWidget extends StatelessWidget {
   final String imageUrl;
@@ -2162,6 +5215,7 @@ class CustomCacheManager extends CacheManager {
 ```
 
 #### 3. Debouncing & Throttling
+
 ```dart
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -2183,7 +5237,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void _onSearchChanged() {
     // Cancel previous timer
     _debounce?.cancel();
-    
+
     // Start new timer
     _debounce = Timer(const Duration(milliseconds: 500), () {
       final query = _searchController.text.trim();
@@ -2219,11 +5273,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 ```
 
 #### 4. Background Sync
+
 ```dart
 class BackgroundSyncService {
   static Future<void> initialize() async {
     await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
-    
+
     // Schedule periodic sync
     await Workmanager().registerPeriodicTask(
       'sync-messages',
@@ -2264,6 +5319,7 @@ Future<void> _syncMessages() async {
 ## Additional Features Implementation
 
 ### 1. Message Reactions
+
 ```typescript
 // Backend
 @Post(':messageId/reactions')
@@ -2277,10 +5333,10 @@ async addReaction(
     user.id,
     dto.emoji,
   );
-  
+
   // Emit via WebSocket
   this.messagesGateway.emitReaction(messageId, reaction);
-  
+
   return { success: true, data: reaction };
 }
 ```
@@ -2328,6 +5384,7 @@ class MessageReactions extends StatelessWidget {
 ```
 
 ### 2. File Upload with Progress
+
 ```dart
 class FileUploadService {
   final Dio _dio;
@@ -2365,7 +5422,7 @@ class FileUploadWidget extends ConsumerWidget {
     return uploadProgress.when(
       data: (progress) {
         if (progress == null) return const SizedBox.shrink();
-        
+
         return LinearProgressIndicator(value: progress);
       },
       loading: () => const CircularProgressIndicator(),
@@ -2376,17 +5433,16 @@ class FileUploadWidget extends ConsumerWidget {
 ```
 
 ### 3. Push Notifications
+
 ```typescript
 // Backend
 @Injectable()
 export class PushNotificationService {
-  constructor(
-    @Inject('FCM') private fcm: admin.messaging.Messaging,
-  ) {}
+  constructor(@Inject("FCM") private fcm: admin.messaging.Messaging) {}
 
   async sendMessageNotification(
     userId: string,
-    message: Message,
+    message: Message
   ): Promise<void> {
     const user = await this.userService.findById(userId);
     const deviceTokens = await this.getDeviceTokens(userId);
@@ -2401,21 +5457,21 @@ export class PushNotificationService {
         imageUrl: message.sender.avatarUrl,
       },
       data: {
-        type: 'new_message',
+        type: "new_message",
         messageId: message.id,
         conversationId: message.conversationId,
       },
       android: {
-        priority: 'high',
+        priority: "high",
         notification: {
-          channelId: 'messages',
-          sound: 'default',
+          channelId: "messages",
+          sound: "default",
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: "default",
             badge: await this.getUnreadCount(userId),
           },
         },
@@ -2430,13 +5486,13 @@ export class PushNotificationService {
       case MessageType.TEXT:
         return message.content;
       case MessageType.IMAGE:
-        return '📷 Photo';
+        return "📷 Photo";
       case MessageType.VIDEO:
-        return '🎥 Video';
+        return "🎥 Video";
       case MessageType.AUDIO:
-        return '🎵 Audio';
+        return "🎵 Audio";
       default:
-        return '📎 File';
+        return "📎 File";
     }
   }
 }
@@ -2524,6 +5580,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 ```
 
 ### 4. Voice Messages
+
 ```dart
 class VoiceRecordingWidget extends StatefulWidget {
   final Function(String audioPath) onRecordingComplete;
@@ -2547,9 +5604,9 @@ class _VoiceRecordingWidgetState extends State<VoiceRecordingWidget> {
     if (await _recorder.hasPermission()) {
       final path = await _getFilePath();
       await _recorder.start(const RecordConfig(), path: path);
-      
+
       setState(() => _isRecording = true);
-      
+
       _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
         setState(() => _duration = Duration(seconds: timer.tick));
       });
@@ -2558,7 +5615,7 @@ class _VoiceRecordingWidgetState extends State<VoiceRecordingWidget> {
 
   Future<void> _stopRecording() async {
     _timer?.cancel();
-    
+
     final path = await _recorder.stop();
     setState(() {
       _isRecording = false;
@@ -2625,6 +5682,7 @@ class _VoiceRecordingWidgetState extends State<VoiceRecordingWidget> {
 ## Code Quality & Bug Prevention
 
 ### 1. Strict TypeScript Configuration
+
 ```json
 // tsconfig.json
 {
@@ -2660,6 +5718,7 @@ class _VoiceRecordingWidgetState extends State<VoiceRecordingWidget> {
 ```
 
 ### 2. ESLint Configuration
+
 ```json
 // .eslintrc.json
 {
@@ -2684,7 +5743,10 @@ class _VoiceRecordingWidgetState extends State<VoiceRecordingWidget> {
     "@typescript-eslint/explicit-function-return-type": "error",
     "@typescript-eslint/explicit-module-boundary-types": "error",
     "@typescript-eslint/no-explicit-any": "error",
-    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_" }
+    ],
     "@typescript-eslint/no-floating-promises": "error",
     "@typescript-eslint/await-thenable": "error",
     "no-console": ["warn", { "allow": ["warn", "error"] }]
@@ -2693,6 +5755,7 @@ class _VoiceRecordingWidgetState extends State<VoiceRecordingWidget> {
 ```
 
 ### 3. Flutter Analysis Options
+
 ```yaml
 # analysis_options.yaml
 include: package:flutter_lints/flutter.yaml
@@ -2751,6 +5814,7 @@ linter:
 ```
 
 ### 4. Pre-commit Hooks
+
 ```json
 // package.json (Backend)
 {
@@ -2769,11 +5833,7 @@ linter:
     }
   },
   "lint-staged": {
-    "*.ts": [
-      "eslint --fix",
-      "prettier --write",
-      "git add"
-    ]
+    "*.ts": ["eslint --fix", "prettier --write", "git add"]
   }
 }
 ```
@@ -2783,6 +5843,7 @@ linter:
 ## Final Implementation Checklist
 
 ### Must-Have Features
+
 - [x] User authentication (email, phone, OAuth)
 - [x] One-on-one messaging
 - [x] Group chats
@@ -2800,6 +5861,7 @@ linter:
 - [x] Workspaces/Organizations
 
 ### Security Features
+
 - [x] JWT authentication with refresh tokens
 - [x] Password hashing (bcrypt)
 - [x] Rate limiting
@@ -2809,6 +5871,7 @@ linter:
 - [x] Optional E2E encryption
 
 ### Performance Features
+
 - [x] Database query optimization
 - [x] Caching (Redis)
 - [x] Message queues for heavy operations
@@ -2818,6 +5881,7 @@ linter:
 - [x] WebSocket connection pooling
 
 ### Code Quality
+
 - [x] TypeScript strict mode
 - [x] Comprehensive error handling
 - [x] Unit tests
@@ -2828,6 +5892,7 @@ linter:
 - [x] API documentation (Swagger)
 
 ### DevOps
+
 - [x] Docker containerization
 - [x] Docker Compose for local development
 - [x] Nginx reverse proxy
@@ -2841,6 +5906,7 @@ linter:
 ## Development Workflow
 
 ### 1. Initial Setup
+
 ```bash
 # Clone repository
 git clone <repository-url>
@@ -2875,6 +5941,7 @@ flutter run
 ```
 
 ### 2. Development Commands
+
 ```bash
 # Backend
 npm run start:dev          # Start development server
@@ -2896,6 +5963,7 @@ flutter pub run build_runner watch  # Watch for code generation
 ```
 
 ### 3. Git Workflow
+
 ```bash
 # Feature development
 git checkout -b feature/your-feature-name
@@ -2920,6 +5988,7 @@ git push origin feature/your-feature-name
 ## Monitoring & Logging
 
 ### Backend Logging
+
 ```typescript
 // logger.service.ts
 @Injectable()
@@ -2928,19 +5997,22 @@ export class LoggerService {
 
   constructor() {
     this.logger = winston.createLogger({
-      level: process.env.LOG_LEVEL || 'info',
+      level: process.env.LOG_LEVEL || "info",
       format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.errors({ stack: true }),
-        winston.format.json(),
+        winston.format.json()
       ),
       transports: [
-        new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-        new winston.transports.File({ filename: 'logs/combined.log' }),
+        new winston.transports.File({
+          filename: "logs/error.log",
+          level: "error",
+        }),
+        new winston.transports.File({ filename: "logs/combined.log" }),
         new winston.transports.Console({
           format: winston.format.combine(
             winston.format.colorize(),
-            winston.format.simple(),
+            winston.format.simple()
           ),
         }),
       ],
@@ -2965,20 +6037,23 @@ export class LoggerService {
 }
 
 // Usage in controllers
-@Controller('messages')
+@Controller("messages")
 export class MessagesController {
   constructor(
     private readonly messagesService: MessagesService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {}
 
   @Post()
-  async createMessage(@Body() dto: CreateMessageDto, @CurrentUser() user: User) {
+  async createMessage(
+    @Body() dto: CreateMessageDto,
+    @CurrentUser() user: User
+  ) {
     this.logger.log(
       `User ${user.id} creating message in conversation ${dto.conversationId}`,
-      'MessagesController',
+      "MessagesController"
     );
-    
+
     try {
       const message = await this.messagesService.createMessage(dto, user.id);
       return { success: true, data: message };
@@ -2986,7 +6061,7 @@ export class MessagesController {
       this.logger.error(
         `Failed to create message: ${error.message}`,
         error.stack,
-        'MessagesController',
+        "MessagesController"
       );
       throw error;
     }
@@ -2995,6 +6070,7 @@ export class MessagesController {
 ```
 
 ### Request Logging Middleware
+
 ```typescript
 @Injectable()
 export class RequestLoggingMiddleware implements NestMiddleware {
@@ -3002,22 +6078,24 @@ export class RequestLoggingMiddleware implements NestMiddleware {
 
   use(req: Request, res: Response, next: NextFunction): void {
     const { method, originalUrl, ip } = req;
-    const userAgent = req.get('user-agent') || '';
+    const userAgent = req.get("user-agent") || "";
     const startTime = Date.now();
 
-    res.on('finish', () => {
+    res.on("finish", () => {
       const { statusCode } = res;
-      const contentLength = res.get('content-length');
+      const contentLength = res.get("content-length");
       const duration = Date.now() - startTime;
 
-      const logMessage = `${method} ${originalUrl} ${statusCode} ${contentLength || 0} - ${userAgent} ${ip} - ${duration}ms`;
+      const logMessage = `${method} ${originalUrl} ${statusCode} ${
+        contentLength || 0
+      } - ${userAgent} ${ip} - ${duration}ms`;
 
       if (statusCode >= 500) {
-        this.logger.error(logMessage, '', 'HTTP');
+        this.logger.error(logMessage, "", "HTTP");
       } else if (statusCode >= 400) {
-        this.logger.warn(logMessage, 'HTTP');
+        this.logger.warn(logMessage, "HTTP");
       } else {
-        this.logger.log(logMessage, 'HTTP');
+        this.logger.log(logMessage, "HTTP");
       }
     });
 
@@ -3034,91 +6112,95 @@ export class RequestLoggingMiddleware implements NestMiddleware {
 // main.ts
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  
+
   // Swagger configuration
   const config = new DocumentBuilder()
-    .setTitle('Chat Application API')
-    .setDescription('Comprehensive chat application API documentation')
-    .setVersion('1.0')
+    .setTitle("Chat Application API")
+    .setDescription("Comprehensive chat application API documentation")
+    .setVersion("1.0")
     .addBearerAuth(
       {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Enter JWT token',
-        in: 'header',
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+        name: "JWT",
+        description: "Enter JWT token",
+        in: "header",
       },
-      'JWT-auth',
+      "JWT-auth"
     )
-    .addTag('Authentication', 'Authentication endpoints')
-    .addTag('Users', 'User management endpoints')
-    .addTag('Messages', 'Messaging endpoints')
-    .addTag('Conversations', 'Conversation management')
-    .addTag('Groups', 'Group chat endpoints')
-    .addTag('Calls', 'Video/Audio call endpoints')
-    .addTag('Media', 'File upload and management')
-    .addTag('Workspaces', 'Workspace/Organization endpoints')
-    .addTag('Stories', 'Stories/Status endpoints')
-    .addTag('Notifications', 'Notification endpoints')
+    .addTag("Authentication", "Authentication endpoints")
+    .addTag("Users", "User management endpoints")
+    .addTag("Messages", "Messaging endpoints")
+    .addTag("Conversations", "Conversation management")
+    .addTag("Groups", "Group chat endpoints")
+    .addTag("Calls", "Video/Audio call endpoints")
+    .addTag("Media", "File upload and management")
+    .addTag("Workspaces", "Workspace/Organization endpoints")
+    .addTag("Stories", "Stories/Status endpoints")
+    .addTag("Notifications", "Notification endpoints")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup("api/docs", app, document);
 
   await app.listen(3000);
 }
 
 // Example controller with Swagger decorators
-@ApiTags('Messages')
-@Controller('messages')
+@ApiTags("Messages")
+@Controller("messages")
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth("JWT-auth")
 export class MessagesController {
   @Post()
-  @ApiOperation({ summary: 'Send a new message' })
-  @ApiResponse({ status: 201, description: 'Message sent successfully', type: MessageResponseDto })
-  @ApiResponse({ status: 400, description: 'Invalid input' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Conversation not found' })
+  @ApiOperation({ summary: "Send a new message" })
+  @ApiResponse({
+    status: 201,
+    description: "Message sent successfully",
+    type: MessageResponseDto,
+  })
+  @ApiResponse({ status: 400, description: "Invalid input" })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  @ApiResponse({ status: 404, description: "Conversation not found" })
   async createMessage(
     @Body() dto: CreateMessageDto,
-    @CurrentUser() user: User,
+    @CurrentUser() user: User
   ): Promise<ApiResponse<MessageResponseDto>> {
     const message = await this.messagesService.createMessage(dto, user.id);
     return { success: true, data: message };
   }
 
-  @Get(':conversationId')
-  @ApiOperation({ summary: 'Get messages for a conversation' })
-  @ApiParam({ name: 'conversationId', description: 'Conversation UUID' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiResponse({ status: 200, description: 'Messages retrieved successfully' })
+  @Get(":conversationId")
+  @ApiOperation({ summary: "Get messages for a conversation" })
+  @ApiParam({ name: "conversationId", description: "Conversation UUID" })
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "limit", required: false, type: Number })
+  @ApiResponse({ status: 200, description: "Messages retrieved successfully" })
   async getMessages(
-    @Param('conversationId') conversationId: string,
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 50,
+    @Param("conversationId") conversationId: string,
+    @Query("page") page: number = 1,
+    @Query("limit") limit: number = 50
   ): Promise<ApiResponse<PaginatedMessagesDto>> {
     const messages = await this.messagesService.getMessages(
       conversationId,
       page,
-      limit,
+      limit
     );
     return { success: true, data: messages };
   }
 
-  @Delete(':messageId')
-  @ApiOperation({ summary: 'Delete a message' })
-  @ApiParam({ name: 'messageId', description: 'Message UUID' })
-  @ApiResponse({ status: 200, description: 'Message deleted successfully' })
-  @ApiResponse({ status: 404, description: 'Message not found' })
+  @Delete(":messageId")
+  @ApiOperation({ summary: "Delete a message" })
+  @ApiParam({ name: "messageId", description: "Message UUID" })
+  @ApiResponse({ status: 200, description: "Message deleted successfully" })
+  @ApiResponse({ status: 404, description: "Message not found" })
   async deleteMessage(
-    @Param('messageId') messageId: string,
-    @CurrentUser() user: User,
+    @Param("messageId") messageId: string,
+    @CurrentUser() user: User
   ): Promise<ApiResponse<void>> {
     await this.messagesService.deleteMessage(messageId, user.id);
-    return { success: true, message: 'Message deleted successfully' };
+    return { success: true, message: "Message deleted successfully" };
   }
 }
 ```
@@ -3128,15 +6210,16 @@ export class MessagesController {
 ## Common Issues & Solutions
 
 ### 1. WebSocket Connection Issues
+
 ```typescript
 // Backend: Ensure CORS is properly configured
 @WebSocketGateway({
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(',') || '*',
+    origin: process.env.CORS_ORIGIN?.split(",") || "*",
     credentials: true,
   },
-  namespace: '/chat',
-  transports: ['websocket', 'polling'],
+  namespace: "/chat",
+  transports: ["websocket", "polling"],
 })
 export class MessagesGateway {
   @WebSocketServer()
@@ -3147,7 +6230,7 @@ export class MessagesGateway {
       // Add authentication middleware
       const token = socket.handshake.auth.token;
       if (!token) {
-        return next(new Error('Authentication error'));
+        return next(new Error("Authentication error"));
       }
       next();
     });
@@ -3223,6 +6306,7 @@ class SocketService {
 ```
 
 ### 2. File Upload Issues
+
 ```typescript
 // Backend: Handle large file uploads
 @Post('upload')
@@ -3240,7 +6324,7 @@ class SocketService {
         'audio/mpeg',
         'application/pdf',
       ];
-      
+
       if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
@@ -3267,6 +6351,7 @@ async uploadFile(
 ```
 
 ### 3. Memory Management in Flutter
+
 ```dart
 // Proper disposal of resources
 class ChatScreen extends StatefulWidget {
@@ -3306,6 +6391,7 @@ class _ChatScreenState extends State<ChatScreen> {
 ```
 
 ### 4. Database Performance Issues
+
 ```typescript
 // Use proper indexing and query optimization
 @Entity()
@@ -3362,6 +6448,7 @@ async markMessagesAsRead(messageIds: string[], userId: string): Promise<void> {
 ## Production Deployment Guide
 
 ### 1. Pre-deployment Checklist
+
 ```bash
 # Backend
 □ Environment variables configured
@@ -3388,6 +6475,7 @@ async markMessagesAsRead(messageIds: string[], userId: string): Promise<void> {
 ```
 
 ### 2. Production Environment Variables
+
 ```env
 # Backend Production .env
 NODE_ENV=production
@@ -3423,6 +6511,7 @@ ENABLE_CSRF=true
 ```
 
 ### 3. Kubernetes Deployment (Optional)
+
 ```yaml
 # backend-deployment.yaml
 apiVersion: apps/v1
@@ -3440,40 +6529,40 @@ spec:
         app: chat-backend
     spec:
       containers:
-      - name: backend
-        image: your-registry/chat-backend:latest
-        ports:
-        - containerPort: 3000
-        env:
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: chat-secrets
-              key: database-url
-        - name: REDIS_URL
-          valueFrom:
-            secretKeyRef:
-              name: chat-secrets
-              key: redis-url
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 5
-          periodSeconds: 5
+        - name: backend
+          image: your-registry/chat-backend:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chat-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chat-secrets
+                  key: redis-url
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -3483,13 +6572,14 @@ spec:
   selector:
     app: chat-backend
   ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 3000
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
   type: LoadBalancer
 ```
 
 ### 4. CI/CD Pipeline (GitHub Actions)
+
 ```yaml
 # .github/workflows/deploy.yml
 name: Deploy to Production
@@ -3505,7 +6595,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: "18"
       - name: Install dependencies
         run: cd backend && npm ci
       - name: Run linter
@@ -3521,7 +6611,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.16.0'
+          flutter-version: "3.16.0"
       - name: Install dependencies
         run: cd frontend && flutter pub get
       - name: Run analyzer
@@ -3561,8 +6651,8 @@ jobs:
       - uses: subosito/flutter-action@v2
       - uses: actions/setup-java@v3
         with:
-          distribution: 'zulu'
-          java-version: '11'
+          distribution: "zulu"
+          java-version: "11"
       - name: Build APK
         run: |
           cd frontend
@@ -3590,18 +6680,21 @@ jobs:
 ## Maintenance & Scaling Considerations
 
 ### 1. Database Optimization
+
 - Regular VACUUM and ANALYZE operations
 - Monitor query performance with pg_stat_statements
 - Implement partitioning for messages table as it grows
 - Archive old data periodically
 
 ### 2. Horizontal Scaling
+
 - Use Redis for session management across instances
 - Implement sticky sessions for WebSocket connections
 - Use message queues for background jobs
 - Separate read replicas for analytics
 
 ### 3. Monitoring Metrics
+
 - API response times
 - WebSocket connection count
 - Database query performance
@@ -3611,6 +6704,7 @@ jobs:
 - Message throughput
 
 ### 4. Backup Strategy
+
 - Automated daily database backups
 - Backup media files to separate storage
 - Test restore procedures regularly
@@ -3623,24 +6717,28 @@ jobs:
 ### Common Error Messages
 
 **"WebSocket connection failed"**
+
 - Check firewall rules
 - Verify SSL certificates
 - Ensure CORS is configured
 - Check authentication token
 
 **"Database connection timeout"**
+
 - Check connection pool size
 - Verify database credentials
 - Check network connectivity
 - Monitor active connections
 
 **"File upload failed"**
+
 - Check file size limits
 - Verify MIME types allowed
 - Check storage space
 - Verify MinIO/S3 credentials
 
 **"Push notifications not working"**
+
 - Verify FCM/OneSignal configuration
 - Check device token registration
 - Verify app certificates (iOS)
@@ -3653,26 +6751,27 @@ jobs:
 ## 🤖 AI Features Integration
 
 ### Free Tier AI Features
+
 ```typescript
 // Backend: AI service structure
 @Injectable()
 export class AIService {
   constructor(
     private readonly openaiClient: OpenAI,
-    private readonly cacheManager: Cache,
+    private readonly cacheManager: Cache
   ) {}
 
   // Smart Replies (Free)
   async generateSmartReplies(conversationId: string): Promise<string[]> {
     const recentMessages = await this.getRecentMessages(conversationId, 5);
     const prompt = `Generate 3 short reply suggestions for: "${recentMessages[0].content}"`;
-    
+
     const response = await this.openaiClient.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: prompt }],
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
       max_tokens: 100,
     });
-    
+
     return this.parseReplies(response.choices[0].message.content);
   }
 
@@ -3691,15 +6790,19 @@ export class AIService {
 ```
 
 ### Premium AI Features
+
 ```typescript
 @Injectable()
 export class PremiumAIService {
   // AI Writing Assistant (Premium)
-  async enhanceMessage(text: string, style: 'professional' | 'casual' | 'formal'): Promise<string> {
+  async enhanceMessage(
+    text: string,
+    style: "professional" | "casual" | "formal"
+  ): Promise<string> {
     const prompt = `Rewrite in ${style} tone: "${text}"`;
     const response = await this.openaiClient.chat.completions.create({
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: prompt }],
+      model: "gpt-4",
+      messages: [{ role: "user", content: prompt }],
     });
     return response.choices[0].message.content;
   }
@@ -3708,8 +6811,8 @@ export class PremiumAIService {
   async transcribeCall(audioUrl: string): Promise<Transcription> {
     const response = await this.openaiClient.audio.transcriptions.create({
       file: await this.downloadAudio(audioUrl),
-      model: 'whisper-1',
-      language: 'en',
+      model: "whisper-1",
+      language: "en",
     });
     return this.formatTranscription(response);
   }
@@ -3723,22 +6826,24 @@ export class PremiumAIService {
   // Conversation Summarization (Premium)
   async summarizeConversation(conversationId: string): Promise<Summary> {
     const messages = await this.getMessages(conversationId);
-    const prompt = `Summarize key points and action items from: ${JSON.stringify(messages)}`;
-    
+    const prompt = `Summarize key points and action items from: ${JSON.stringify(
+      messages
+    )}`;
+
     const response = await this.openaiClient.chat.completions.create({
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: prompt }],
+      model: "gpt-4",
+      messages: [{ role: "user", content: prompt }],
     });
-    
+
     return this.parseSummary(response.choices[0].message.content);
   }
 
   // AI Image Generation (Premium)
   async generateImage(prompt: string): Promise<string> {
     const response = await this.openaiClient.images.generate({
-      model: 'dall-e-3',
+      model: "dall-e-3",
       prompt,
-      size: '1024x1024',
+      size: "1024x1024",
     });
     return response.data[0].url;
   }
@@ -3746,6 +6851,7 @@ export class PremiumAIService {
 ```
 
 ### Flutter AI Integration
+
 ```dart
 // AI Features Provider
 @riverpod
@@ -3767,7 +6873,7 @@ class AIFeaturesNotifier extends _$AIFeaturesNotifier {
   // Premium: Message Enhancement
   Future<String> enhanceMessage(String text, String style) async {
     await _checkPremiumAccess();
-    
+
     final response = await ref.read(apiClientProvider).post(
       '/ai/enhance-message',
       data: {'text': text, 'style': style},
@@ -3778,7 +6884,7 @@ class AIFeaturesNotifier extends _$AIFeaturesNotifier {
   // Premium: Meeting Transcription
   Future<Transcription> transcribeCall(String callId) async {
     await _checkPremiumAccess();
-    
+
     final response = await ref.read(apiClientProvider).post(
       '/ai/transcribe/$callId',
     );
@@ -3795,25 +6901,27 @@ class AIFeaturesNotifier extends _$AIFeaturesNotifier {
 ```
 
 ### AI Features Summary
-| Feature | Tier | API |
-|---------|------|-----|
-| Smart Replies | Free | GPT-3.5 Turbo |
-| Basic Translation | Free | LibreTranslate |
-| Spam Detection | Free | Custom Model |
-| Content Moderation | Free | Perspective API |
-| **AI Writing Assistant** | **Premium** | **GPT-4** |
-| **Meeting Transcription** | **Premium** | **Whisper** |
+
+| Feature                     | Tier        | API                        |
+| --------------------------- | ----------- | -------------------------- |
+| Smart Replies               | Free        | GPT-3.5 Turbo              |
+| Basic Translation           | Free        | LibreTranslate             |
+| Spam Detection              | Free        | Custom Model               |
+| Content Moderation          | Free        | Perspective API            |
+| **AI Writing Assistant**    | **Premium** | **GPT-4**                  |
+| **Meeting Transcription**   | **Premium** | **Whisper**                |
 | **Smart Search (Semantic)** | **Premium** | **Embeddings + Vector DB** |
-| **Conversation Summary** | **Premium** | **GPT-4** |
-| **Image Generation** | **Premium** | **DALL-E 3** |
-| **Voice Enhancement** | **Premium** | **Krisp/Custom** |
-| **Advanced Analytics** | **Premium** | **Custom ML** |
+| **Conversation Summary**    | **Premium** | **GPT-4**                  |
+| **Image Generation**        | **Premium** | **DALL-E 3**               |
+| **Voice Enhancement**       | **Premium** | **Krisp/Custom**           |
+| **Advanced Analytics**      | **Premium** | **Custom ML**              |
 
 ---
 
 ## 💳 Subscription & Monetization System
 
 ### Database Schema for Subscriptions
+
 ```sql
 -- Subscription plans
 CREATE TABLE subscription_plans (
@@ -3861,18 +6969,19 @@ CREATE TABLE feature_usage (
 
 -- Insert default plans
 INSERT INTO subscription_plans (name, display_name, description, price_monthly, price_yearly, features, ai_credits, storage_gb, max_participants) VALUES
-('free', 'Free', 'Perfect for personal use', 0, 0, 
- '{"smart_replies": true, "basic_translation": true, "spam_detection": true, "max_file_size_mb": 25}', 
+('free', 'Free', 'Perfect for personal use', 0, 0,
+ '{"smart_replies": true, "basic_translation": true, "spam_detection": true, "max_file_size_mb": 25}',
  50, 5, 10),
-('premium', 'Premium', 'Advanced AI features for professionals', 9.99, 99.99, 
- '{"all_free_features": true, "ai_assistant": true, "meeting_transcription": true, "smart_search": true, "conversation_summary": true, "priority_support": true, "max_file_size_mb": 100}', 
+('premium', 'Premium', 'Advanced AI features for professionals', 9.99, 99.99,
+ '{"all_free_features": true, "ai_assistant": true, "meeting_transcription": true, "smart_search": true, "conversation_summary": true, "priority_support": true, "max_file_size_mb": 100}',
  500, 50, 50),
-('business', 'Business', 'Complete solution for teams', 19.99, 199.99, 
- '{"all_premium_features": true, "advanced_analytics": true, "custom_branding": true, "sso": true, "dedicated_support": true, "max_file_size_mb": 500}', 
+('business', 'Business', 'Complete solution for teams', 19.99, 199.99,
+ '{"all_premium_features": true, "advanced_analytics": true, "custom_branding": true, "sso": true, "dedicated_support": true, "max_file_size_mb": 500}',
  2000, 200, 200);
 ```
 
 ### Backend Subscription Service
+
 ```typescript
 @Injectable()
 export class SubscriptionService {
@@ -3890,7 +6999,7 @@ export class SubscriptionService {
     paymentMethodId: string,
   ): Promise<UserSubscription> {
     const plan = await this.planRepo.findOne({ where: { id: planId } });
-    
+
     // Create Stripe subscription
     const stripeSubscription = await this.stripeService.createSubscription({
       customerId: await this.getOrCreateStripeCustomer(userId),
@@ -3912,7 +7021,7 @@ export class SubscriptionService {
 
   async checkFeatureAccess(userId: string, feature: string): Promise<boolean> {
     const subscription = await this.getUserSubscription(userId);
-    
+
     if (!subscription || subscription.status !== 'active') {
       return this.isFeatureFree(feature);
     }
@@ -3923,7 +7032,7 @@ export class SubscriptionService {
 
   async consumeAICredits(userId: string, credits: number): Promise<void> {
     const subscription = await this.getUserSubscription(userId);
-    
+
     if (!subscription) {
       throw new ForbiddenException('No active subscription');
     }
@@ -3952,7 +7061,7 @@ export class FeatureAccessGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const feature = this.reflector.get<string>('feature', context.getHandler());
-    
+
     const hasAccess = await this.subscriptionService.checkFeatureAccess(
       request.user.id,
       feature,
@@ -3977,6 +7086,7 @@ async enhanceMessage(@Body() dto: EnhanceMessageDto, @CurrentUser() user: User) 
 ```
 
 ### Flutter Subscription UI
+
 ```dart
 // Subscription Provider
 @riverpod
@@ -3997,7 +7107,7 @@ class SubscriptionNotifier extends _$SubscriptionNotifier {
 
   Future<void> subscribe(String planId, String paymentMethodId) async {
     state = const AsyncValue.loading();
-    
+
     state = await AsyncValue.guard(() async {
       final response = await ref.read(apiClientProvider).post(
         '/subscriptions',
@@ -4124,7 +7234,7 @@ class PlanCard extends ConsumerWidget {
     if (paymentMethodId == null) return;
 
     await ref.read(subscriptionProvider.notifier).subscribe(plan.id, paymentMethodId);
-    
+
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Subscription activated successfully!')),
@@ -4168,14 +7278,14 @@ class ChatScreen extends StatelessWidget {
         children: [
           // Regular chat messages
           Expanded(child: MessagesList()),
-          
+
           // AI features with premium gate
           PremiumFeatureGate(
             feature: 'ai_assistant',
             child: AIWritingAssistant(),
             fallback: UpgradePromptBanner(),
           ),
-          
+
           MessageInput(),
         ],
       ),
@@ -4191,13 +7301,14 @@ class ChatScreen extends StatelessWidget {
 ### Universal Coding Standards (Apply to ALL Code)
 
 #### 1. **Naming Conventions**
+
 ```typescript
 // ✅ CORRECT
-class UserService {}                    // PascalCase for classes
-interface IUserRepository {}           // PascalCase with I prefix for interfaces
-const MAX_RETRY_ATTEMPTS = 3;          // UPPER_SNAKE_CASE for constants
-let userName: string;                  // camelCase for variables
-function getUserById(id: string) {}    // camelCase for functions
+class UserService {} // PascalCase for classes
+interface IUserRepository {} // PascalCase with I prefix for interfaces
+const MAX_RETRY_ATTEMPTS = 3; // UPPER_SNAKE_CASE for constants
+let userName: string; // camelCase for variables
+function getUserById(id: string) {} // camelCase for functions
 
 // ❌ INCORRECT
 class user_service {}
@@ -4220,6 +7331,7 @@ String UserName;
 ```
 
 #### 2. **File Structure Rules**
+
 ```
 ✅ One class/component per file
 ✅ File name matches class name (snake_case for Flutter, kebab-case for NestJS)
@@ -4229,27 +7341,31 @@ String UserName;
 ```
 
 #### 3. **Function/Method Rules**
+
 ```typescript
 // ✅ CORRECT: Single responsibility, clear purpose
 async function getUserProfile(userId: string): Promise<UserProfile> {
-  if (!userId) throw new ValidationException('User ID required');
-  
+  if (!userId) throw new ValidationException("User ID required");
+
   const user = await this.userRepository.findById(userId);
-  if (!user) throw new NotFoundException('User not found');
-  
+  if (!user) throw new NotFoundException("User not found");
+
   return this.mapToProfile(user);
 }
 
 // ❌ INCORRECT: Doing too much
 async function getUser(id: string) {
-  const user = await db.query('SELECT * FROM users WHERE id = ?', [id]);
-  const posts = await db.query('SELECT * FROM posts WHERE user_id = ?', [id]);
-  const friends = await db.query('SELECT * FROM friends WHERE user_id = ?', [id]);
+  const user = await db.query("SELECT * FROM users WHERE id = ?", [id]);
+  const posts = await db.query("SELECT * FROM posts WHERE user_id = ?", [id]);
+  const friends = await db.query("SELECT * FROM friends WHERE user_id = ?", [
+    id,
+  ]);
   // ... too many responsibilities
 }
 ```
 
 **Rules:**
+
 - Maximum 50 lines per function
 - Maximum 4 parameters (use objects for more)
 - One level of abstraction per function
@@ -4257,6 +7373,7 @@ async function getUser(id: string) {
 - Pure functions when possible (no side effects)
 
 #### 4. **Error Handling (MANDATORY)**
+
 ```typescript
 // ✅ CORRECT: Proper error handling at every level
 @Post()
@@ -4264,18 +7381,18 @@ async createUser(@Body() dto: CreateUserDto): Promise<ApiResponse<User>> {
   try {
     // Validate input
     await this.validateUserDto(dto);
-    
+
     // Business logic
     const user = await this.userService.createUser(dto);
-    
+
     // Log success
     this.logger.log(`User created: ${user.id}`);
-    
+
     return { success: true, data: user };
   } catch (error) {
     // Log error with context
     this.logger.error(`Failed to create user: ${error.message}`, error.stack);
-    
+
     // Throw appropriate exception
     if (error instanceof ValidationError) {
       throw new BadRequestException(error.message);
@@ -4316,6 +7433,7 @@ Future<User> createUser(CreateUserDto dto) async {
 ```
 
 **Error Handling Rules:**
+
 - NEVER use empty catch blocks
 - Always log errors with context
 - Use specific exception types
@@ -4323,16 +7441,17 @@ Future<User> createUser(CreateUserDto dto) async {
 - Include stack traces in logs (not in responses)
 
 #### 5. **Comments & Documentation**
+
 ```typescript
 // ✅ CORRECT: Document complex logic, not obvious code
 /**
  * Calculates user engagement score based on activity patterns
- * 
+ *
  * Algorithm:
  * - Weight recent activity higher (exponential decay)
  * - Consider message frequency, call participation, reactions
  * - Normalize to 0-100 scale
- * 
+ *
  * @param userId - User UUID
  * @param days - Number of days to analyze (default: 30)
  * @returns Engagement score (0-100)
@@ -4351,6 +7470,7 @@ counter += 1;
 ```
 
 **Documentation Rules:**
+
 - Document WHY, not WHAT
 - JSDoc/DartDoc for public APIs
 - Explain complex algorithms
@@ -4358,13 +7478,14 @@ counter += 1;
 - Document assumptions and constraints
 
 #### 6. **Code Organization**
+
 ```typescript
 // ✅ CORRECT: Logical grouping
 export class UserService {
   // 1. Constructor & Dependencies
   constructor(
     private readonly userRepository: UserRepository,
-    private readonly emailService: EmailService,
+    private readonly emailService: EmailService
   ) {}
 
   // 2. Public Methods (alphabetical)
@@ -4381,6 +7502,7 @@ export class UserService {
 ```
 
 #### 7. **Constants & Magic Numbers**
+
 ```typescript
 // ❌ INCORRECT: Magic numbers
 if (users.length > 100) {
@@ -4399,12 +7521,13 @@ setTimeout(callback, AUTO_SAVE_DELAY_MS);
 ```
 
 #### 8. **Null Safety**
+
 ```typescript
 // ✅ CORRECT: Always check for null/undefined
 async function getUserEmail(userId: string): Promise<string | null> {
   const user = await this.userRepository.findById(userId);
   if (!user) return null;
-  
+
   return user.email ?? user.backupEmail ?? null;
 }
 
@@ -4427,6 +7550,7 @@ final email = user?.email ?? throw Exception('Email required');
 ```
 
 #### 9. **Async/Await Best Practices**
+
 ```typescript
 // ✅ CORRECT: Parallel execution when possible
 async function getUserData(userId: string) {
@@ -4435,7 +7559,7 @@ async function getUserData(userId: string) {
     this.postRepository.findByUserId(userId),
     this.friendRepository.findByUserId(userId),
   ]);
-  
+
   return { user, posts, friends };
 }
 
@@ -4444,38 +7568,40 @@ async function getUserData(userId: string) {
   const user = await this.userRepository.findById(userId);
   const posts = await this.postRepository.findByUserId(userId);
   const friends = await this.friendRepository.findByUserId(userId);
-  
+
   return { user, posts, friends };
 }
 ```
 
 #### 10. **Testing Requirements**
+
 ```typescript
 // Every service must have tests
-describe('UserService', () => {
+describe("UserService", () => {
   // ✅ Test happy path
-  it('should create user successfully', async () => {
-    const dto = { email: 'test@test.com', password: 'password123' };
+  it("should create user successfully", async () => {
+    const dto = { email: "test@test.com", password: "password123" };
     const result = await service.createUser(dto);
     expect(result).toBeDefined();
     expect(result.email).toBe(dto.email);
   });
 
   // ✅ Test error cases
-  it('should throw error for duplicate email', async () => {
-    const dto = { email: 'existing@test.com', password: 'password123' };
+  it("should throw error for duplicate email", async () => {
+    const dto = { email: "existing@test.com", password: "password123" };
     await expect(service.createUser(dto)).rejects.toThrow(ConflictException);
   });
 
   // ✅ Test edge cases
-  it('should handle empty email', async () => {
-    const dto = { email: '', password: 'password123' };
+  it("should handle empty email", async () => {
+    const dto = { email: "", password: "password123" };
     await expect(service.createUser(dto)).rejects.toThrow(ValidationException);
   });
 });
 ```
 
 **Testing Rules:**
+
 - Minimum 80% code coverage
 - Test happy path + error cases + edge cases
 - Mock external dependencies
@@ -4483,15 +7609,16 @@ describe('UserService', () => {
 - Use descriptive test names
 
 #### 11. **Performance Rules**
+
 ```typescript
 // ✅ CORRECT: Efficient database queries
 async function getActiveUsers(): Promise<User[]> {
   return this.userRepository
-    .createQueryBuilder('user')
-    .select(['user.id', 'user.username', 'user.avatarUrl']) // Select only needed fields
-    .where('user.isActive = :isActive', { isActive: true })
-    .andWhere('user.lastSeen > :threshold', { 
-      threshold: new Date(Date.now() - 24 * 60 * 60 * 1000) 
+    .createQueryBuilder("user")
+    .select(["user.id", "user.username", "user.avatarUrl"]) // Select only needed fields
+    .where("user.isActive = :isActive", { isActive: true })
+    .andWhere("user.lastSeen > :threshold", {
+      threshold: new Date(Date.now() - 24 * 60 * 60 * 1000),
     })
     .limit(100)
     .getMany();
@@ -4500,16 +7627,17 @@ async function getActiveUsers(): Promise<User[]> {
 // ❌ INCORRECT: N+1 query problem
 async function getUsersWithPosts(): Promise<User[]> {
   const users = await this.userRepository.find();
-  
+
   for (const user of users) {
     user.posts = await this.postRepository.findByUserId(user.id); // N+1!
   }
-  
+
   return users;
 }
 ```
 
 **Performance Rules:**
+
 - Avoid N+1 queries
 - Use pagination for large datasets
 - Implement caching for frequently accessed data

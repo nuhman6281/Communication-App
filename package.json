@@ -1,0 +1,36 @@
+{
+  "name": "communication-app",
+  "version": "1.0.0",
+  "description": "Enterprise chat platform with WebRTC video/audio calls",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n \"API,UI\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd chat-backend && npm run start:dev",
+    "dev:frontend": "cd chat-web-client && npm run dev",
+    "install:all": "npm install && cd chat-backend && npm install && cd ../chat-web-client && npm install",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd chat-backend && npm run build",
+    "build:frontend": "cd chat-web-client && npm run build",
+    "clean": "rm -rf node_modules chat-backend/node_modules chat-web-client/node_modules",
+    "fresh": "npm run clean && npm run install:all",
+    "docker:up": "cd chat-backend && docker compose up -d",
+    "docker:down": "cd chat-backend && docker compose down",
+    "docker:restart": "cd chat-backend && docker compose restart",
+    "docker:logs": "cd chat-backend && docker compose logs -f",
+    "docker:ps": "docker ps --filter 'name=chatapp-'",
+    "docker:clean": "cd chat-backend && docker compose down -v"
+  },
+  "keywords": [
+    "chat",
+    "webrtc",
+    "video-calls",
+    "messaging",
+    "nestjs",
+    "react"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

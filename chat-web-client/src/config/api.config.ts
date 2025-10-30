@@ -4,16 +4,12 @@
  */
 
 export const API_CONFIG = {
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
-  wsURL: import.meta.env.VITE_WS_URL || 'http://localhost:3000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1',
+  wsURL: import.meta.env.VITE_WS_URL || 'http://localhost:3001',
   storageURL: import.meta.env.VITE_STORAGE_URL || 'http://localhost:9000/chatapp-media',
   timeout: 30000, // 30 seconds
   retryAttempts: 3,
   retryDelay: 1000, // 1 second
-} as const;
-
-export const JITSI_CONFIG = {
-  domain: import.meta.env.VITE_JITSI_DOMAIN || 'meet.jit.si',
 } as const;
 
 export const APP_CONFIG = {

@@ -1,382 +1,1137 @@
-/**
- * WebRTC Service for Video/Audio Calls
- * Handles peer connections, media streams, and signaling
- */
+import { realtimeSocket } from '../websocket/realtime-socket';
+import { useCallStore } from '../stores/call.store';
+import { useAuthStore } from '../stores';
 
-import { socketService } from '../websocket/socket';
-
-export interface MediaStreamConfig {
-  video: boolean;
-  audio: boolean;
+export interface WebRTCConfig {
+  iceServers: RTCIceServer[];
+  iceCandidatePoolSize?: number;
 }
 
-export interface PeerConnectionConfig {
-  callId: string;
+export interface MediaConstraints {
+  audio: boolean | MediaTrackConstraints;
+  video: boolean | MediaTrackConstraints;
+}
+
+export interface CallParticipant {
   userId: string;
-  isInitiator: boolean;
+  username: string;
+  avatarUrl?: string;
+  isAudioEnabled: boolean;
+  isVideoEnabled: boolean;
+  isScreenSharing: boolean;
+  stream?: MediaStream;
+  peerConnection?: RTCPeerConnection;
 }
 
 class WebRTCService {
   private peerConnections: Map<string, RTCPeerConnection> = new Map();
   private localStream: MediaStream | null = null;
   private screenStream: MediaStream | null = null;
-  private remoteStreams: Map<string, MediaStream> = new Map();
+  private config: WebRTCConfig;
+  private pendingCandidates: Map<string, RTCIceCandidate[]> = new Map();
+  private initialized: boolean = false;
 
-  // ICE servers configuration
-  private iceServers: RTCIceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ];
+  constructor() {
+
+    // Default STUN/TURN configuration
+    this.config = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        // TURN servers will be provided by the signaling server
+      ],
+      iceCandidatePoolSize: 10,
+    };
+
+    // Don't initialize handlers here - wait for socket connection
+  }
 
   /**
-   * Initialize local media stream (camera and microphone)
+   * Initialize WebRTC service socket handlers
+   * Must be called after realtime socket is connected
    */
-  async initializeLocalStream(config: MediaStreamConfig = { video: true, audio: true }): Promise<MediaStream> {
-    try {
-      console.log('[WebRTC] Initializing local stream with config:', config);
+  public initialize() {
+    if (this.initialized) {
+      console.log('[WebRTC] Already initialized');
+      return;
+    }
 
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        video: config.video ? {
+    if (!realtimeSocket.isConnected()) {
+      console.warn('[WebRTC] Realtime socket not connected yet, deferring initialization');
+      return;
+    }
+
+    console.log('[WebRTC] Initializing service with socket handlers');
+    this.initializeSocketHandlers();
+    this.initialized = true;
+  }
+
+  private initializeSocketHandlers() {
+    console.log('[WebRTC] 🎯 Registering socket event handlers...');
+
+    // Call initiated - receive server-generated callId
+    realtimeSocket.on('call:initiated', (data: any) => {
+      console.log('[WebRTC] 📞 EVENT: call:initiated received');
+      console.log('[WebRTC] Call initiated by server:', data);
+      const { callId, iceServers } = data;
+
+      console.log('[WebRTC] 🔄 Updating store with server callId:', callId);
+
+      // Update the active call with server's callId
+      useCallStore.getState().setCallId(callId);
+
+      // Update ICE servers if provided
+      if (iceServers && iceServers.length > 0) {
+        console.log('[WebRTC] 🌐 Updating ICE servers, count:', iceServers.length);
+        this.config.iceServers = iceServers;
+      }
+
+      console.log('[WebRTC] ✅ CallId set to:', callId);
+    });
+
+    // Incoming call
+    realtimeSocket.on('call:incoming', (data: any) => {
+      console.log('[WebRTC] 📞 EVENT: call:incoming received');
+      console.log('[WebRTC] Incoming call data:', data);
+      const { callId, from, conversationId, callType } = data;
+
+      console.log('[WebRTC] 🔔 Incoming', callType, 'call from:', from.username, '(', from.userId, ')');
+      console.log('[WebRTC] CallId:', callId, '| ConversationId:', conversationId);
+
+      console.log('[WebRTC] 🔄 Storing incoming call in state...');
+      useCallStore.getState().receiveIncomingCall({
+        callId,
+        conversationId,
+        callType,
+        from,
+        receivedAt: new Date(),
+      });
+
+      console.log('[WebRTC] ✅ Incoming call modal should now appear');
+    });
+
+    // Call accepted by remote peer
+    realtimeSocket.on('call:accepted', async (data: any) => {
+      console.log('[WebRTC] 📞 EVENT: call:accepted received');
+      console.log('[WebRTC] Call accepted data:', data);
+      const { callId, userId, acceptedBy } = data;
+
+      console.log('[WebRTC] ✅ User', userId, 'accepted the call');
+
+      const activeCall = useCallStore.getState().activeCall;
+      if (!activeCall) {
+        console.error('[WebRTC] ❌ Call accepted but no active call exists in store');
+        return;
+      }
+
+      console.log('[WebRTC] 🔍 Validating callId match...');
+      console.log('[WebRTC]   Expected:', activeCall.callId);
+      console.log('[WebRTC]   Received:', callId);
+
+      if (activeCall.callId !== callId) {
+        console.error('[WebRTC] ❌ CallId mismatch!');
+        console.error('[WebRTC]   Expected:', activeCall.callId);
+        console.error('[WebRTC]   Received:', callId);
+        return;
+      }
+
+      console.log('[WebRTC] ✅ CallId match confirmed:', callId);
+
+      // Add the accepting user as a participant
+      console.log('[WebRTC] 👤 Adding participant:', userId);
+      useCallStore.getState().addParticipant(userId, {
+        userId,
+        username: data.username || acceptedBy?.username || 'Unknown',
+        avatarUrl: data.avatarUrl || acceptedBy?.avatarUrl,
+        isAudioEnabled: true,
+        isVideoEnabled: activeCall.callType === 'video',
+        isScreenSharing: false,
+      });
+
+      // If we are the initiator, create and send offer to the accepting peer
+      const { user } = useAuthStore.getState();
+      console.log('[WebRTC] 🔍 Checking if we are the initiator...');
+      console.log('[WebRTC]   Our userId:', user?.id);
+      console.log('[WebRTC]   Initiator userId:', activeCall.initiatorId);
+
+      if (user && activeCall.initiatorId === user.id) {
+        console.log('[WebRTC] ✅ We are the initiator - creating offer for:', userId);
+        await this.createOffer(userId);
+      } else {
+        console.log('[WebRTC] ℹ️ We are NOT the initiator - waiting for offer');
+      }
+    });
+
+    // Call rejected
+    realtimeSocket.on('call:rejected', (data: any) => {
+      console.log('[WebRTC] 📞 ========================================');
+      console.log('[WebRTC] ❌ EVENT: call:rejected received');
+      console.log('[WebRTC] ========================================');
+      console.log('[WebRTC] Call rejected data:', data);
+      const { callId, rejectedBy, reason } = data;
+
+      console.log('[WebRTC] CallId:', callId);
+      console.log('[WebRTC] Rejected by:', rejectedBy);
+      console.log('[WebRTC] Reason:', reason);
+
+      // Clear incoming call if we're the receiver
+      const incomingCall = useCallStore.getState().incomingCall;
+      console.log('[WebRTC] Current incomingCall:', incomingCall?.callId);
+
+      if (incomingCall && incomingCall.callId === callId) {
+        console.log('[WebRTC] 🔔 Clearing incoming call');
+        useCallStore.getState().rejectCall(callId);
+      }
+
+      // End active call if we're in one
+      const activeCall = useCallStore.getState().activeCall;
+      console.log('[WebRTC] Current activeCall:', activeCall?.callId);
+
+      if (activeCall && activeCall.callId === callId) {
+        console.log('[WebRTC] 📞 Ending active call');
+        this.endCall();
+      }
+
+      console.log('[WebRTC] ✅ Call rejected handled');
+    });
+
+    // Call ended
+    realtimeSocket.on('call:ended', (data: any) => {
+      console.log('[WebRTC] 📞 ========================================');
+      console.log('[WebRTC] 🔴 EVENT: call:ended received');
+      console.log('[WebRTC] ========================================');
+      console.log('[WebRTC] Call ended data:', data);
+      const { callId, endedBy } = data;
+
+      console.log('[WebRTC] Call ended by:', endedBy);
+      console.log('[WebRTC] CallId:', callId);
+
+      // Check if we ended the call ourselves
+      const { user } = useAuthStore.getState();
+      const weEndedIt = endedBy?.userId === user?.id;
+      console.log('[WebRTC] Did we end this call?', weEndedIt);
+
+      if (weEndedIt) {
+        console.log('[WebRTC] ℹ️ We ended this call, ignoring our own call:ended event');
+        return;
+      }
+
+      // Check if we already handled this call end (prevent duplicate handling)
+      // Server emits to both user:id and call:id rooms, so we might receive it twice
+      const incomingCall = useCallStore.getState().incomingCall;
+      const activeCall = useCallStore.getState().activeCall;
+
+      console.log('[WebRTC] Current incomingCall:', incomingCall?.callId);
+      console.log('[WebRTC] Current activeCall:', activeCall?.callId);
+
+      // Check if we have ANY call with this callId
+      const hasCall = (incomingCall?.callId === callId) || (activeCall?.callId === callId);
+
+      if (!hasCall) {
+        console.log('[WebRTC] ℹ️ Call already ended or not found, ignoring duplicate event');
+        return;
+      }
+
+      // Clear incoming call if we're the receiver
+      if (incomingCall && incomingCall.callId === callId) {
+        console.log('[WebRTC] 🔔 Clearing incoming call modal');
+        useCallStore.getState().rejectCall(callId);
+        console.log('[WebRTC] ✅ Incoming call cleared');
+        return;
+      }
+
+      // End active call if we're in one
+      if (activeCall && activeCall.callId === callId) {
+        console.log('[WebRTC] 📞 Other user ended the call, ending our side');
+        this.endCall();
+        console.log('[WebRTC] ✅ Active call ended');
+        return;
+      }
+    });
+
+    // Call missed
+    realtimeSocket.on('call:missed', (data: any) => {
+      console.log('[WebRTC] 📞 ========================================');
+      console.log('[WebRTC] ⏰ EVENT: call:missed received');
+      console.log('[WebRTC] ========================================');
+      console.log('[WebRTC] Call missed data:', data);
+      const { callId } = data;
+
+      console.log('[WebRTC] CallId:', callId);
+
+      // Clear incoming call
+      const incomingCall = useCallStore.getState().incomingCall;
+      console.log('[WebRTC] Current incomingCall:', incomingCall?.callId);
+
+      if (incomingCall && incomingCall.callId === callId) {
+        console.log('[WebRTC] 🔔 Clearing missed incoming call');
+        useCallStore.getState().rejectCall(callId);
+        console.log('[WebRTC] ✅ Incoming call cleared');
+      } else {
+        console.warn('[WebRTC] ⚠️ No matching incoming call to clear');
+      }
+    });
+
+    // WebRTC signaling
+    realtimeSocket.on('webrtc:offer', async (data: any) => {
+      console.log('[WebRTC] 🔄 EVENT: webrtc:offer received');
+      console.log('[WebRTC] Offer from:', data.userId);
+      console.log('[WebRTC] Offer SDP type:', data.offer?.type);
+      console.log('[WebRTC] 📦 Processing offer...');
+      await this.handleOffer(data.userId, data.offer);
+      console.log('[WebRTC] ✅ Offer processed, answer should be sent');
+    });
+
+    realtimeSocket.on('webrtc:answer', async (data: any) => {
+      console.log('[WebRTC] 🔄 EVENT: webrtc:answer received');
+      console.log('[WebRTC] Answer from:', data.userId);
+      console.log('[WebRTC] Answer SDP type:', data.answer?.type);
+      console.log('[WebRTC] 📦 Processing answer...');
+      await this.handleAnswer(data.userId, data.answer);
+      console.log('[WebRTC] ✅ Answer processed, peer connection should establish');
+    });
+
+    realtimeSocket.on('webrtc:ice-candidate', async (data: any) => {
+      console.log('[WebRTC] 🧊 EVENT: webrtc:ice-candidate received');
+      console.log('[WebRTC] ICE candidate from:', data.userId);
+      console.log('[WebRTC] Candidate type:', data.candidate?.candidate ? 'valid' : 'end-of-candidates');
+      console.log('[WebRTC] 📦 Adding ICE candidate...');
+      await this.handleIceCandidate(data.userId, data.candidate);
+      console.log('[WebRTC] ✅ ICE candidate added');
+    });
+
+    // Participant events
+    realtimeSocket.on('call:participant:joined', (data: any) => {
+      console.log('[WebRTC] Participant joined:', data);
+      const { userId, username, avatarUrl } = data;
+
+      useCallStore.getState().addParticipant(userId, {
+        userId,
+        username,
+        avatarUrl,
+        isAudioEnabled: true,
+        isVideoEnabled: true,
+        isScreenSharing: false,
+      });
+
+      // Create peer connection for new participant
+      this.createPeerConnection(userId);
+    });
+
+    realtimeSocket.on('call:participant:left', (data: any) => {
+      console.log('[WebRTC] Participant left:', data);
+      const { userId } = data;
+
+      this.closePeerConnection(userId);
+      useCallStore.getState().removeParticipant(userId);
+    });
+
+    realtimeSocket.on('call:participant:media-toggle', (data: any) => {
+      console.log('[WebRTC] Participant media toggle:', data);
+      const { userId, mediaType, enabled } = data;
+
+      const updates: any = {};
+      if (mediaType === 'audio') updates.isAudioEnabled = enabled;
+      if (mediaType === 'video') updates.isVideoEnabled = enabled;
+      if (mediaType === 'screen') updates.isScreenSharing = enabled;
+
+      useCallStore.getState().updateParticipant(userId, updates);
+    });
+
+    // TURN server credentials
+    realtimeSocket.on('turn:credentials', (data: any) => {
+      console.log('[WebRTC] Received TURN credentials');
+      if (data.iceServers) {
+        this.config.iceServers = [...this.config.iceServers, ...data.iceServers];
+      }
+    });
+  }
+
+  async initiateCall(conversationId: string, callType: 'audio' | 'video', participants: string[]) {
+    try {
+      console.log('[WebRTC] 📞 ========================================');
+      console.log('[WebRTC] 🚀 INITIATING CALL');
+      console.log('[WebRTC] ========================================');
+      console.log('[WebRTC] ConversationId:', conversationId);
+      console.log('[WebRTC] Call type:', callType);
+      console.log('[WebRTC] Participants:', participants);
+
+      // Get current user
+      console.log('[WebRTC] 🔍 Getting authenticated user...');
+      const { user } = useAuthStore.getState();
+      if (!user) {
+        console.error('[WebRTC] ❌ No authenticated user found');
+        return false;
+      }
+      console.log('[WebRTC] ✅ User:', user.username, '(', user.id, ')');
+
+      // Get local media stream
+      console.log('[WebRTC] 🎥 Requesting local media stream...');
+      console.log('[WebRTC]   Audio: true');
+      console.log('[WebRTC]   Video:', callType === 'video');
+      await this.getLocalStream(callType === 'video');
+      console.log('[WebRTC] ✅ Local media stream acquired');
+
+      // Update store FIRST to set initiatorId
+      console.log('[WebRTC] 🔄 Creating call in store (callId will be pending)...');
+      useCallStore.getState().initiateCall(conversationId, callType, participants);
+
+      // Set initiator ID
+      const activeCall = useCallStore.getState().activeCall;
+      if (activeCall) {
+        activeCall.initiatorId = user.id;
+        activeCall.initiatorName = user.username || user.firstName || 'You';
+        console.log('[WebRTC] ✅ Set initiator:', activeCall.initiatorName);
+      }
+
+      // Emit call initiation to signaling server
+      console.log('[WebRTC] 📡 Emitting call:initiate to server...');
+      realtimeSocket.emit('call:initiate', {
+        conversationId,
+        callType,
+        participants,
+      });
+      console.log('[WebRTC] ✅ call:initiate emitted');
+      console.log('[WebRTC] ⏳ Waiting for server to generate callId...');
+
+      return true;
+    } catch (error) {
+      console.error('[WebRTC] ❌ Failed to initiate call:', error);
+      console.error('[WebRTC] Error stack:', (error as Error).stack);
+      this.endCall();
+      return false;
+    }
+  }
+
+  async acceptCall(callId: string) {
+    try {
+      console.log('[WebRTC] 📞 ========================================');
+      console.log('[WebRTC] ✅ ACCEPTING CALL');
+      console.log('[WebRTC] ========================================');
+      console.log('[WebRTC] CallId:', callId);
+
+      console.log('[WebRTC] 🔍 Getting incoming call from store...');
+      const incomingCall = useCallStore.getState().incomingCall;
+      if (!incomingCall) {
+        console.error('[WebRTC] ❌ No incoming call found in store');
+        return false;
+      }
+      console.log('[WebRTC] ✅ Found incoming call from:', incomingCall.from.username);
+      console.log('[WebRTC]   Call type:', incomingCall.callType);
+
+      // Get local media stream
+      console.log('[WebRTC] 🎥 Requesting local media stream...');
+      console.log('[WebRTC]   Audio: true');
+      console.log('[WebRTC]   Video:', incomingCall.callType === 'video');
+      await this.getLocalStream(incomingCall.callType === 'video');
+      console.log('[WebRTC] ✅ Local media stream acquired');
+
+      // Accept the call in store
+      console.log('[WebRTC] 🔄 Accepting call in store...');
+      useCallStore.getState().acceptCall(callId);
+      console.log('[WebRTC] ✅ Call accepted in store, overlay should appear');
+
+      // Add the initiator as a participant
+      console.log('[WebRTC] 👤 Adding initiator as participant:', incomingCall.from.userId);
+      useCallStore.getState().addParticipant(incomingCall.from.userId, {
+        userId: incomingCall.from.userId,
+        username: incomingCall.from.username,
+        avatarUrl: incomingCall.from.avatarUrl,
+        isAudioEnabled: true,
+        isVideoEnabled: incomingCall.callType === 'video',
+        isScreenSharing: false,
+      });
+
+      // Create peer connection for the initiator
+      console.log('[WebRTC] 🔗 Creating peer connection for initiator...');
+      this.createPeerConnection(incomingCall.from.userId);
+      console.log('[WebRTC] ✅ Peer connection created, waiting for offer');
+
+      // Notify signaling server
+      console.log('[WebRTC] 📡 Emitting call:accept to server...');
+      realtimeSocket.emit('call:accept', { callId });
+      console.log('[WebRTC] ✅ call:accept emitted');
+      console.log('[WebRTC] ⏳ Waiting for offer from initiator...');
+
+      return true;
+    } catch (error) {
+      console.error('[WebRTC] ❌ Failed to accept call:', error);
+      console.error('[WebRTC] Error stack:', (error as Error).stack);
+      this.rejectCall(callId);
+      return false;
+    }
+  }
+
+  rejectCall(callId: string) {
+    console.log('[WebRTC] 📞 ========================================');
+    console.log('[WebRTC] ❌ REJECTING CALL');
+    console.log('[WebRTC] ========================================');
+    console.log('[WebRTC] CallId:', callId);
+
+    console.log('[WebRTC] 📡 Notifying server of call rejection...');
+    realtimeSocket.emit('call:reject', { callId });
+    console.log('[WebRTC] ✅ call:reject event emitted');
+
+    console.log('[WebRTC] 🧹 Clearing incoming call from store...');
+    useCallStore.getState().rejectCall(callId);
+    console.log('[WebRTC] ✅ Call rejected successfully');
+  }
+
+  async getLocalStream(video: boolean = true): Promise<MediaStream> {
+    if (this.localStream) {
+      console.log('[WebRTC] Reusing existing local stream');
+      return this.localStream;
+    }
+
+    try {
+      console.log('[WebRTC] Requesting user media - Video:', video);
+
+      const constraints: MediaConstraints = {
+        audio: true,
+        video: video ? {
           width: { ideal: 1280 },
           height: { ideal: 720 },
           facingMode: 'user',
         } : false,
-        audio: config.audio ? {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        } : false,
-      });
+      };
 
-      console.log('[WebRTC] Local stream initialized:', this.localStream.id);
+      console.log('[WebRTC] Media constraints:', constraints);
+
+      this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      const audioTracks = this.localStream.getAudioTracks();
+      const videoTracks = this.localStream.getVideoTracks();
+
+      console.log('[WebRTC] ✅ Local stream acquired successfully');
+      console.log('[WebRTC] Audio tracks:', audioTracks.length, audioTracks.map(t => t.label));
+      console.log('[WebRTC] Video tracks:', videoTracks.length, videoTracks.map(t => t.label));
+
+      useCallStore.getState().setLocalStream(this.localStream);
+
       return this.localStream;
-    } catch (error) {
-      console.error('[WebRTC] Failed to initialize local stream:', error);
-      throw new Error('Failed to access camera/microphone. Please check permissions.');
+    } catch (error: any) {
+      console.error('[WebRTC] ❌ Failed to get local stream:', error);
+      console.error('[WebRTC] Error name:', error.name);
+      console.error('[WebRTC] Error message:', error.message);
+
+      // Provide user-friendly error messages
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        console.error('[WebRTC] Camera/microphone permission denied by user');
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        console.error('[WebRTC] No camera/microphone found on device');
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        console.error('[WebRTC] Camera/microphone already in use by another application');
+      }
+
+      throw error;
     }
   }
 
-  /**
-   * Create peer connection for a specific user
-   */
-  async createPeerConnection(
-    config: PeerConnectionConfig,
-    onRemoteStream: (stream: MediaStream) => void,
-  ): Promise<RTCPeerConnection> {
-    const { callId, userId, isInitiator } = config;
-
-    console.log(`[WebRTC] Creating peer connection for user ${userId} in call ${callId}`);
-
-    const peerConnection = new RTCPeerConnection({
-      iceServers: this.iceServers,
-    });
-
-    // Add local stream tracks to peer connection
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => {
-        peerConnection.addTrack(track, this.localStream!);
-      });
+  private createPeerConnection(userId: string): RTCPeerConnection {
+    if (this.peerConnections.has(userId)) {
+      console.log('[WebRTC] ℹ️ Peer connection already exists for:', userId);
+      return this.peerConnections.get(userId)!;
     }
 
+    console.log('[WebRTC] 🔗 ========================================');
+    console.log('[WebRTC] 🔗 CREATING PEER CONNECTION');
+    console.log('[WebRTC] ========================================');
+    console.log('[WebRTC] Target user:', userId);
+    console.log('[WebRTC] ICE servers configured:', this.config.iceServers.length);
+
+    const pc = new RTCPeerConnection(this.config);
+
+    // Add local stream tracks
+    console.log('[WebRTC] 📹 Adding local tracks to peer connection...');
+    if (this.localStream) {
+      const tracks = this.localStream.getTracks();
+      console.log('[WebRTC]   Adding', tracks.length, 'tracks');
+      tracks.forEach((track, index) => {
+        console.log('[WebRTC]   Track', index + 1, ':', track.kind, '-', track.label);
+        pc.addTrack(track, this.localStream!);
+      });
+      console.log('[WebRTC] ✅ Local tracks added');
+    } else {
+      console.warn('[WebRTC] ⚠️ No local stream available to add tracks');
+    }
+
+    // Handle incoming tracks
+    pc.ontrack = (event) => {
+      console.log('[WebRTC] 📺 ========================================');
+      console.log('[WebRTC] 📺 RECEIVED REMOTE TRACK');
+      console.log('[WebRTC] ========================================');
+      console.log('[WebRTC] From:', userId);
+      console.log('[WebRTC] Track kind:', event.track.kind);
+      console.log('[WebRTC] Track label:', event.track.label);
+      console.log('[WebRTC] Stream count:', event.streams.length);
+
+      const [remoteStream] = event.streams;
+      console.log('[WebRTC] Remote stream tracks:', remoteStream.getTracks().length);
+      remoteStream.getTracks().forEach((track, index) => {
+        console.log('[WebRTC]   Track', index + 1, ':', track.kind, '-', track.label);
+      });
+
+      console.log('[WebRTC] 🔄 Updating participant with remote stream...');
+      useCallStore.getState().updateParticipant(userId, {
+        stream: remoteStream,
+      });
+      console.log('[WebRTC] ✅ Remote stream set for participant');
+    };
+
     // Handle ICE candidates
-    peerConnection.onicecandidate = (event) => {
+    pc.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log(`[WebRTC] Sending ICE candidate to user ${userId}`);
-        socketService.emit('call:ice-candidate', {
-          callId,
-          targetUserId: userId,
-          candidate: event.candidate.toJSON(),
+        console.log('[WebRTC] Sending ICE candidate to:', userId);
+
+        // Get active call for callId
+        const activeCall = useCallStore.getState().activeCall;
+        if (!activeCall || !activeCall.callId || activeCall.callId === 'pending') {
+          console.error('[WebRTC] Cannot send ICE candidate - no valid callId');
+          return;
+        }
+
+        realtimeSocket.emit('webrtc:ice-candidate', {
+          callId: activeCall.callId,
+          to: userId,
+          candidate: event.candidate,
         });
       }
     };
 
-    // Handle remote stream
-    peerConnection.ontrack = (event) => {
-      console.log(`[WebRTC] Received remote track from user ${userId}:`, event.streams[0].id);
-      const remoteStream = event.streams[0];
-      this.remoteStreams.set(userId, remoteStream);
-      onRemoteStream(remoteStream);
-    };
-
     // Handle connection state changes
-    peerConnection.onconnectionstatechange = () => {
-      console.log(`[WebRTC] Connection state with ${userId}:`, peerConnection.connectionState);
+    pc.onconnectionstatechange = async () => {
+      console.log('[WebRTC] 🔌 ========================================');
+      console.log('[WebRTC] 🔌 CONNECTION STATE CHANGE');
+      console.log('[WebRTC] ========================================');
+      console.log('[WebRTC] User:', userId);
+      console.log('[WebRTC] New state:', pc.connectionState);
 
-      if (peerConnection.connectionState === 'disconnected' ||
-          peerConnection.connectionState === 'failed') {
-        console.log(`[WebRTC] Peer connection with ${userId} ${peerConnection.connectionState}`);
+      if (pc.connectionState === 'connected') {
+        console.log('[WebRTC] ✅ ========================================');
+        console.log('[WebRTC] ✅ PEER CONNECTION ESTABLISHED!');
+        console.log('[WebRTC] ✅ ========================================');
+        console.log('[WebRTC] Peer:', userId);
+        console.log('[WebRTC] 🎉 Media should now be flowing!');
+      } else if (pc.connectionState === 'failed') {
+        console.error('[WebRTC] ❌ ========================================');
+        console.error('[WebRTC] ❌ CONNECTION FAILED');
+        console.error('[WebRTC] ❌ ========================================');
+        console.error('[WebRTC] Peer:', userId);
+        console.warn('[WebRTC] 🔄 Attempting ICE restart...');
+
+        // Attempt ICE restart
+        try {
+          const offer = await pc.createOffer({ iceRestart: true });
+          await pc.setLocalDescription(offer);
+
+          // Get active call for callId
+          const activeCall = useCallStore.getState().activeCall;
+          if (!activeCall || !activeCall.callId || activeCall.callId === 'pending') {
+            console.error('[WebRTC] Cannot send ICE restart offer - no valid callId');
+            return;
+          }
+
+          console.log('[WebRTC] Sending ICE restart offer to:', userId, 'for call:', activeCall.callId);
+
+          realtimeSocket.emit('webrtc:offer', {
+            callId: activeCall.callId,
+            to: userId,
+            sdp: offer,
+          });
+
+          console.log('[WebRTC] ICE restart offer sent to:', userId);
+        } catch (error) {
+          console.error('[WebRTC] ICE restart failed:', error);
+        }
+      } else if (pc.connectionState === 'disconnected') {
+        console.log('[WebRTC] Peer disconnected:', userId, '- Monitoring...');
+
+        // Wait a bit to see if it reconnects
+        setTimeout(() => {
+          if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+            console.warn('[WebRTC] Connection still down, attempting reconnection');
+            this.renegotiate(userId);
+          }
+        }, 5000); // Wait 5 seconds before attempting reconnection
+      } else if (pc.connectionState === 'closed') {
+        console.log('[WebRTC] Peer connection closed:', userId);
         this.closePeerConnection(userId);
       }
     };
 
-    // Store peer connection
-    this.peerConnections.set(userId, peerConnection);
+    // Monitor ICE connection state
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC] ICE state for ${userId}:`, pc.iceConnectionState);
 
-    // If initiator, create and send offer
-    if (isInitiator) {
-      await this.createOffer(callId, userId, peerConnection);
-    }
-
-    return peerConnection;
-  }
-
-  /**
-   * Create and send offer
-   */
-  private async createOffer(
-    callId: string,
-    userId: string,
-    peerConnection: RTCPeerConnection,
-  ): Promise<void> {
-    try {
-      console.log(`[WebRTC] Creating offer for user ${userId}`);
-
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-
-      socketService.emit('call:offer', {
-        callId,
-        targetUserId: userId,
-        offer: offer.toJSON(),
-      });
-
-      console.log(`[WebRTC] Offer sent to user ${userId}`);
-    } catch (error) {
-      console.error(`[WebRTC] Failed to create offer for user ${userId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Handle incoming offer
-   */
-  async handleOffer(
-    callId: string,
-    fromUserId: string,
-    offer: RTCSessionDescriptionInit,
-    onRemoteStream: (stream: MediaStream) => void,
-  ): Promise<void> {
-    try {
-      console.log(`[WebRTC] Handling offer from user ${fromUserId}`);
-
-      let peerConnection = this.peerConnections.get(fromUserId);
-
-      if (!peerConnection) {
-        peerConnection = await this.createPeerConnection(
-          { callId, userId: fromUserId, isInitiator: false },
-          onRemoteStream,
-        );
+      if (pc.iceConnectionState === 'failed') {
+        console.error('[WebRTC] ICE connection failed for:', userId);
+      } else if (pc.iceConnectionState === 'disconnected') {
+        console.warn('[WebRTC] ICE disconnected for:', userId);
       }
+    };
 
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    this.peerConnections.set(userId, pc);
 
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-
-      socketService.emit('call:answer', {
-        callId,
-        targetUserId: fromUserId,
-        answer: answer.toJSON(),
+    // Process pending ICE candidates
+    const pending = this.pendingCandidates.get(userId);
+    if (pending) {
+      pending.forEach(candidate => {
+        pc.addIceCandidate(candidate).catch(console.error);
       });
-
-      console.log(`[WebRTC] Answer sent to user ${fromUserId}`);
-    } catch (error) {
-      console.error(`[WebRTC] Failed to handle offer from user ${fromUserId}:`, error);
-      throw error;
+      this.pendingCandidates.delete(userId);
     }
+
+    return pc;
   }
 
-  /**
-   * Handle incoming answer
-   */
-  async handleAnswer(
-    fromUserId: string,
-    answer: RTCSessionDescriptionInit,
-  ): Promise<void> {
-    try {
-      console.log(`[WebRTC] Handling answer from user ${fromUserId}`);
+  private async createOffer(userId: string) {
+    const pc = this.createPeerConnection(userId);
 
-      const peerConnection = this.peerConnections.get(fromUserId);
-      if (!peerConnection) {
-        console.error(`[WebRTC] No peer connection found for user ${fromUserId}`);
+    try {
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
+
+      await pc.setLocalDescription(offer);
+
+      // Get active call for callId
+      const activeCall = useCallStore.getState().activeCall;
+      if (!activeCall || !activeCall.callId || activeCall.callId === 'pending') {
+        console.error('[WebRTC] Cannot send offer - no valid callId');
         return;
       }
 
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-      console.log(`[WebRTC] Answer processed from user ${fromUserId}`);
+      console.log('[WebRTC] Sending offer to:', userId, 'for call:', activeCall.callId);
+
+      realtimeSocket.emit('webrtc:offer', {
+        callId: activeCall.callId,
+        to: userId,
+        sdp: offer,
+      });
     } catch (error) {
-      console.error(`[WebRTC] Failed to handle answer from user ${fromUserId}:`, error);
-      throw error;
+      console.error('[WebRTC] Failed to create offer:', error);
     }
   }
 
-  /**
-   * Handle incoming ICE candidate
-   */
-  async handleIceCandidate(
-    fromUserId: string,
-    candidate: RTCIceCandidateInit,
-  ): Promise<void> {
+  private async handleOffer(userId: string, offer: RTCSessionDescriptionInit) {
+    const pc = this.createPeerConnection(userId);
+
     try {
-      const peerConnection = this.peerConnections.get(fromUserId);
-      if (!peerConnection) {
-        console.warn(`[WebRTC] No peer connection found for ICE candidate from user ${fromUserId}`);
+      await pc.setRemoteDescription(offer);
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      // Get active call for callId
+      const activeCall = useCallStore.getState().activeCall;
+      if (!activeCall || !activeCall.callId || activeCall.callId === 'pending') {
+        console.error('[WebRTC] Cannot send answer - no valid callId');
         return;
       }
 
-      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-      console.log(`[WebRTC] ICE candidate added from user ${fromUserId}`);
+      console.log('[WebRTC] Sending answer to:', userId, 'for call:', activeCall.callId);
+
+      realtimeSocket.emit('webrtc:answer', {
+        callId: activeCall.callId,
+        to: userId,
+        sdp: answer,
+      });
     } catch (error) {
-      console.error(`[WebRTC] Failed to add ICE candidate from user ${fromUserId}:`, error);
+      console.error('[WebRTC] Failed to handle offer:', error);
+    }
+  }
+
+  private async handleAnswer(userId: string, answer: RTCSessionDescriptionInit) {
+    const pc = this.peerConnections.get(userId);
+    if (!pc) return;
+
+    try {
+      await pc.setRemoteDescription(answer);
+    } catch (error) {
+      console.error('[WebRTC] Failed to handle answer:', error);
+    }
+  }
+
+  private async handleIceCandidate(userId: string, candidate: RTCIceCandidateInit) {
+    const pc = this.peerConnections.get(userId);
+
+    if (!pc) {
+      // Store candidate for later
+      if (!this.pendingCandidates.has(userId)) {
+        this.pendingCandidates.set(userId, []);
+      }
+      this.pendingCandidates.get(userId)!.push(new RTCIceCandidate(candidate));
+      return;
+    }
+
+    try {
+      await pc.addIceCandidate(candidate);
+    } catch (error) {
+      console.error('[WebRTC] Failed to add ICE candidate:', error);
+    }
+  }
+
+  async toggleAudio() {
+    if (!this.localStream) return;
+
+    const audioTracks = this.localStream.getAudioTracks();
+    const isEnabled = audioTracks.length > 0 && !audioTracks[0].enabled;
+
+    audioTracks.forEach(track => {
+      track.enabled = isEnabled;
+    });
+
+    useCallStore.getState().toggleAudio();
+
+    // Notify other participants
+    const activeCall = useCallStore.getState().activeCall;
+    if (activeCall) {
+      realtimeSocket.emit('call:media-toggle', {
+        callId: activeCall.callId,
+        mediaType: 'audio',
+        enabled: isEnabled,
+      });
+    }
+  }
+
+  async toggleVideo() {
+    if (!this.localStream) return;
+
+    const videoTracks = this.localStream.getVideoTracks();
+    const isEnabled = videoTracks.length > 0 && !videoTracks[0].enabled;
+
+    videoTracks.forEach(track => {
+      track.enabled = isEnabled;
+    });
+
+    useCallStore.getState().toggleVideo();
+
+    // Notify other participants
+    const activeCall = useCallStore.getState().activeCall;
+    if (activeCall) {
+      realtimeSocket.emit('call:media-toggle', {
+        callId: activeCall.callId,
+        mediaType: 'video',
+        enabled: isEnabled,
+      });
     }
   }
 
   /**
-   * Toggle local audio (mute/unmute)
+   * Switch from audio to video call
+   * Adds video track to existing audio call
    */
-  toggleAudio(enabled: boolean): void {
-    if (!this.localStream) return;
-
-    this.localStream.getAudioTracks().forEach((track) => {
-      track.enabled = enabled;
-    });
-
-    console.log(`[WebRTC] Audio ${enabled ? 'enabled' : 'disabled'}`);
-  }
-
-  /**
-   * Toggle local video (on/off)
-   */
-  toggleVideo(enabled: boolean): void {
-    if (!this.localStream) return;
-
-    this.localStream.getVideoTracks().forEach((track) => {
-      track.enabled = enabled;
-    });
-
-    console.log(`[WebRTC] Video ${enabled ? 'enabled' : 'disabled'}`);
-  }
-
-  /**
-   * Start screen sharing
-   */
-  async startScreenShare(): Promise<MediaStream> {
+  async switchToVideo() {
     try {
-      console.log('[WebRTC] Starting screen share');
+      const activeCall = useCallStore.getState().activeCall;
+      if (!activeCall) {
+        console.warn('[WebRTC] No active call to switch');
+        return false;
+      }
 
-      this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+      // If already video call, just enable video
+      if (activeCall.callType === 'video') {
+        const videoTracks = this.localStream?.getVideoTracks() || [];
+        if (videoTracks.length > 0) {
+          videoTracks.forEach(track => { track.enabled = true; });
+          useCallStore.getState().toggleVideo();
+          return true;
+        }
+      }
+
+      // Get video track
+      const videoStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          cursor: 'always',
-        },
-        audio: false,
-      });
-
-      // Replace video track in all peer connections
-      const videoTrack = this.screenStream.getVideoTracks()[0];
-
-      this.peerConnections.forEach((peerConnection) => {
-        const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) {
-          sender.replaceTrack(videoTrack);
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user',
         }
       });
 
-      // Handle screen share stop
-      videoTrack.onended = () => {
-        this.stopScreenShare();
+      const videoTrack = videoStream.getVideoTracks()[0];
+
+      // Add video track to local stream
+      if (this.localStream) {
+        this.localStream.addTrack(videoTrack);
+      }
+
+      // Add video track to all peer connections
+      this.peerConnections.forEach((pc, userId) => {
+        pc.addTrack(videoTrack, this.localStream!);
+      });
+
+      // Update call type
+      activeCall.callType = 'video';
+      useCallStore.getState().setLocalStream(this.localStream);
+
+      // Renegotiate with all peers
+      for (const [userId, pc] of this.peerConnections) {
+        await this.renegotiate(userId);
+      }
+
+      console.log('[WebRTC] Successfully switched to video call');
+      return true;
+    } catch (error) {
+      console.error('[WebRTC] Failed to switch to video:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Renegotiate peer connection (create new offer/answer)
+   */
+  private async renegotiate(userId: string) {
+    const pc = this.peerConnections.get(userId);
+    if (!pc) return;
+
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // Get active call for callId
+      const activeCall = useCallStore.getState().activeCall;
+      if (!activeCall || !activeCall.callId || activeCall.callId === 'pending') {
+        console.error('[WebRTC] Cannot renegotiate - no valid callId');
+        return;
+      }
+
+      console.log('[WebRTC] Sending renegotiation offer to:', userId, 'for call:', activeCall.callId);
+
+      realtimeSocket.emit('webrtc:offer', {
+        callId: activeCall.callId,
+        to: userId,
+        sdp: offer,
+      });
+
+      console.log('[WebRTC] Renegotiation offer sent to:', userId);
+    } catch (error) {
+      console.error('[WebRTC] Failed to renegotiate:', error);
+    }
+  }
+
+  async toggleScreenShare() {
+    const activeCall = useCallStore.getState().activeCall;
+    if (!activeCall) return;
+
+    try {
+      if (this.screenStream) {
+        // Stop screen sharing
+        this.screenStream.getTracks().forEach(track => track.stop());
+        this.screenStream = null;
+
+        // Replace screen track with camera track
+        const videoTrack = this.localStream?.getVideoTracks()[0];
+        if (videoTrack) {
+          this.peerConnections.forEach((pc, userId) => {
+            const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) {
+              sender.replaceTrack(videoTrack);
+            }
+          });
+        }
+
+        useCallStore.getState().toggleScreenShare();
+
+        realtimeSocket.emit('call:media-toggle', {
+          callId: activeCall.callId,
+          mediaType: 'screen',
+          enabled: false,
+        });
+      } else {
+        // Start screen sharing
+        this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+        });
+
+        const screenTrack = this.screenStream.getVideoTracks()[0];
+
+        // Replace camera track with screen track
+        this.peerConnections.forEach((pc, userId) => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            sender.replaceTrack(screenTrack);
+          }
+        });
+
+        // Handle screen share end
+        screenTrack.onended = () => {
+          this.toggleScreenShare();
+        };
+
+        useCallStore.getState().toggleScreenShare();
+
+        realtimeSocket.emit('call:media-toggle', {
+          callId: activeCall.callId,
+          mediaType: 'screen',
+          enabled: true,
+        });
+      }
+    } catch (error) {
+      console.error('[WebRTC] Failed to toggle screen share:', error);
+    }
+  }
+
+  private closePeerConnection(userId: string) {
+    const pc = this.peerConnections.get(userId);
+    if (pc) {
+      pc.close();
+      this.peerConnections.delete(userId);
+    }
+  }
+
+  /**
+   * Monitor connection quality for debugging and diagnostics
+   * Logs detailed statistics about peer connections
+   */
+  async getConnectionStats(userId: string): Promise<void> {
+    const pc = this.peerConnections.get(userId);
+    if (!pc) {
+      console.warn('[WebRTC] No peer connection found for:', userId);
+      return;
+    }
+
+    try {
+      const stats = await pc.getStats();
+      const statsReport: any = {
+        connectionState: pc.connectionState,
+        iceConnectionState: pc.iceConnectionState,
+        iceGatheringState: pc.iceGatheringState,
+        signalingState: pc.signalingState,
+        audio: { inbound: {}, outbound: {} },
+        video: { inbound: {}, outbound: {} },
+        connection: {},
       };
 
-      console.log('[WebRTC] Screen share started');
-      return this.screenStream;
-    } catch (error) {
-      console.error('[WebRTC] Failed to start screen share:', error);
-      throw new Error('Failed to start screen sharing');
-    }
-  }
-
-  /**
-   * Stop screen sharing
-   */
-  stopScreenShare(): void {
-    if (!this.screenStream) return;
-
-    console.log('[WebRTC] Stopping screen share');
-
-    // Stop all screen share tracks
-    this.screenStream.getTracks().forEach((track) => track.stop());
-
-    // Restore camera video track in all peer connections
-    if (this.localStream) {
-      const videoTrack = this.localStream.getVideoTracks()[0];
-
-      this.peerConnections.forEach((peerConnection) => {
-        const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
-        if (sender && videoTrack) {
-          sender.replaceTrack(videoTrack);
+      stats.forEach((report) => {
+        // Audio/Video stats
+        if (report.type === 'inbound-rtp') {
+          const mediaType = report.kind === 'audio' ? 'audio' : 'video';
+          statsReport[mediaType].inbound = {
+            packetsReceived: report.packetsReceived,
+            packetsLost: report.packetsLost,
+            jitter: report.jitter,
+            bytesReceived: report.bytesReceived,
+          };
+        } else if (report.type === 'outbound-rtp') {
+          const mediaType = report.kind === 'audio' ? 'audio' : 'video';
+          statsReport[mediaType].outbound = {
+            packetsSent: report.packetsSent,
+            bytesSent: report.bytesSent,
+          };
+        } else if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+          statsReport.connection = {
+            currentRoundTripTime: report.currentRoundTripTime,
+            availableOutgoingBitrate: report.availableOutgoingBitrate,
+            availableIncomingBitrate: report.availableIncomingBitrate,
+          };
         }
       });
-    }
 
-    this.screenStream = null;
-    console.log('[WebRTC] Screen share stopped');
-  }
+      console.log(`[WebRTC] Connection stats for ${userId}:`, statsReport);
 
-  /**
-   * Get local stream
-   */
-  getLocalStream(): MediaStream | null {
-    return this.localStream;
-  }
+      // Warn about quality issues
+      if (statsReport.connection.currentRoundTripTime > 0.3) {
+        console.warn('[WebRTC] High latency detected:', statsReport.connection.currentRoundTripTime);
+      }
 
-  /**
-   * Get remote stream for a specific user
-   */
-  getRemoteStream(userId: string): MediaStream | null {
-    return this.remoteStreams.get(userId) || null;
-  }
-
-  /**
-   * Close peer connection for a specific user
-   */
-  closePeerConnection(userId: string): void {
-    const peerConnection = this.peerConnections.get(userId);
-
-    if (peerConnection) {
-      peerConnection.close();
-      this.peerConnections.delete(userId);
-      this.remoteStreams.delete(userId);
-      console.log(`[WebRTC] Closed peer connection with user ${userId}`);
+      if (statsReport.audio.inbound.packetsLost > 0) {
+        const lossRate = statsReport.audio.inbound.packetsLost / statsReport.audio.inbound.packetsReceived;
+        if (lossRate > 0.05) {
+          console.warn('[WebRTC] High packet loss detected:', (lossRate * 100).toFixed(2) + '%');
+        }
+      }
+    } catch (error) {
+      console.error('[WebRTC] Failed to get connection stats:', error);
     }
   }
 
   /**
-   * Cleanup all connections and streams
+   * Start periodic connection monitoring
+   * Useful for production debugging and quality assurance
    */
-  cleanup(): void {
-    console.log('[WebRTC] Cleaning up all connections and streams');
+  private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map();
+
+  startConnectionMonitoring(userId: string, intervalMs: number = 10000) {
+    // Clear existing monitor if any
+    this.stopConnectionMonitoring(userId);
+
+    console.log('[WebRTC] Starting connection monitoring for:', userId, 'every', intervalMs, 'ms');
+
+    const interval = setInterval(() => {
+      this.getConnectionStats(userId);
+    }, intervalMs);
+
+    this.monitoringIntervals.set(userId, interval);
+  }
+
+  stopConnectionMonitoring(userId: string) {
+    const interval = this.monitoringIntervals.get(userId);
+    if (interval) {
+      clearInterval(interval);
+      this.monitoringIntervals.delete(userId);
+      console.log('[WebRTC] Stopped connection monitoring for:', userId);
+    }
+  }
+
+  endCall() {
+    console.log('[WebRTC] 📞 ========================================');
+    console.log('[WebRTC] 🔴 ENDING CALL');
+    console.log('[WebRTC] ========================================');
+
+    // Stop all connection monitoring
+    console.log('[WebRTC] 🛑 Stopping connection monitoring...');
+    this.monitoringIntervals.forEach((interval, userId) => {
+      this.stopConnectionMonitoring(userId);
+    });
 
     // Close all peer connections
-    this.peerConnections.forEach((_, userId) => {
+    console.log('[WebRTC] 🔌 Closing peer connections...');
+    this.peerConnections.forEach((pc, userId) => {
       this.closePeerConnection(userId);
     });
 
-    // Stop local stream
+    // Stop local streams
+    console.log('[WebRTC] 📹 Stopping local media streams...');
     if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream.getTracks().forEach(track => track.stop());
       this.localStream = null;
     }
 
-    // Stop screen stream
     if (this.screenStream) {
-      this.screenStream.getTracks().forEach((track) => track.stop());
+      this.screenStream.getTracks().forEach(track => track.stop());
       this.screenStream = null;
     }
 
-    // Clear maps
-    this.peerConnections.clear();
-    this.remoteStreams.clear();
+    // Clear pending candidates
+    this.pendingCandidates.clear();
 
-    console.log('[WebRTC] Cleanup complete');
+    // Notify server - IMPORTANT: Do this BEFORE clearing the store
+    const activeCall = useCallStore.getState().activeCall;
+    const incomingCall = useCallStore.getState().incomingCall;
+
+    // Determine which callId to use
+    const callIdToEnd = activeCall?.callId || incomingCall?.callId;
+
+    if (callIdToEnd && callIdToEnd !== 'pending') {
+      console.log('[WebRTC] 📡 Notifying server of call end:', callIdToEnd);
+      realtimeSocket.emit('call:end', { callId: callIdToEnd });
+      console.log('[WebRTC] ✅ call:end event emitted to server');
+    } else {
+      console.warn('[WebRTC] ⚠️ No valid callId to end, skipping server notification');
+    }
+
+    // Clear both active call and incoming call from store
+    console.log('[WebRTC] 🧹 Clearing call state from store...');
+    if (activeCall) {
+      useCallStore.getState().endCall('');
+    }
+    if (incomingCall) {
+      useCallStore.getState().rejectCall(incomingCall.callId);
+    }
+
+    console.log('[WebRTC] ✅ Call ended successfully');
   }
 }
 

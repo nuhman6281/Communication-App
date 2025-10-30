@@ -20,11 +20,10 @@ interface SidebarProps {
   currentView: string;
   onViewChange: (view: any) => void;
   onNotificationsClick?: () => void;
-  onCallHistoryClick?: () => void;
   onSearchClick?: () => void;
 }
 
-export function Sidebar({ currentView, onViewChange, onNotificationsClick, onCallHistoryClick, onSearchClick }: SidebarProps) {
+export function Sidebar({ currentView, onViewChange, onNotificationsClick, onSearchClick }: SidebarProps) {
   const navItems = [
     { id: 'chat', icon: MessageSquare, label: 'Chats', badge: 5 },
     { id: 'stories', icon: ImageIcon, label: 'Stories' },
@@ -75,23 +74,6 @@ export function Sidebar({ currentView, onViewChange, onNotificationsClick, onCal
           </TooltipTrigger>
           <TooltipContent side="right">
             <p>Notifications</p>
-          </TooltipContent>
-        </Tooltip>
-
-        {/* Call History Button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="w-12 h-12 hover:bg-white/10"
-              onClick={onCallHistoryClick}
-            >
-              <Phone className="w-5 h-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            <p>Call History</p>
           </TooltipContent>
         </Tooltip>
 
