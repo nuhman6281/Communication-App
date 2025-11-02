@@ -137,13 +137,15 @@ VITE_ENABLE_VIDEO_CALLS=true
 
 ```
 Communication App/
-├── chat-backend/          # NestJS backend
-├── chat-web-client/       # React frontend
+├── chat-backend/          # NestJS backend (180 TypeScript files)
+├── chat-web-client/       # React frontend (130 TypeScript files)
+├── realtime-service/      # WebRTC signaling server (8 TypeScript files)
 ├── package.json           # Root scripts (run both)
-├── README.md             # This file
+├── README.md             # This file - Quick start guide
 ├── CLAUDE.md             # Claude Code guidance
-├── PROJECT_ARCHITECTURE.md # Complete architecture docs
-└── comprehensive_chat_app_prompt.md # Master specification
+├── PROJECT_DOCUMENTATION.md # Complete file-by-file documentation (NEW)
+├── PROJECT_ARCHITECTURE.md  # System architecture and design
+└── comprehensive_chat_app_prompt.md # Master specification (4,500+ lines)
 ```
 
 ## ✨ Features
@@ -184,9 +186,15 @@ See `PROJECT_ARCHITECTURE.md` section "Current Issues & Solutions" for detailed 
 
 ## 📚 Documentation
 
-- **Architecture**: See `PROJECT_ARCHITECTURE.md` for complete system architecture
-- **Specification**: See `comprehensive_chat_app_prompt.md` for full feature specs (4,500+ lines)
-- **Claude Guidance**: See `CLAUDE.md` for AI assistant instructions
+- **📖 Complete Documentation**: `PROJECT_DOCUMENTATION.md` - File-by-file tree view of all 318 files with inline explanations
+- **🏗️ Architecture**: `PROJECT_ARCHITECTURE.md` - System architecture, design patterns, and technical decisions
+- **📋 Specification**: `comprehensive_chat_app_prompt.md` - Full feature specification (4,500+ lines)
+- **🤖 Claude Guidance**: `CLAUDE.md` - Claude Code AI assistant instructions
+
+### Service-Specific Docs
+- **Backend**: `chat-backend/README.md`, `chat-backend/ROADMAP.md`, `chat-backend/SMTP_SETUP_GUIDE.md`
+- **Frontend**: `chat-web-client/README.md`, `chat-web-client/IMPLEMENTATION_GUIDE.md`
+- **Realtime**: `realtime-service/README.md` (if exists)
 
 ## 🛠️ Technology Stack
 

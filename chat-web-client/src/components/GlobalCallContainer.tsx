@@ -151,33 +151,56 @@ export const GlobalCallContainer: React.FC = () => {
       {/* Minimized Call Indicator */}
       {activeCall && activeCall.isMinimized && (
         <div
-          className="fixed bottom-4 right-4 bg-gray-900 text-white rounded-lg p-3 shadow-lg cursor-pointer hover:bg-gray-800 transition-colors"
+          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white rounded-2xl p-4 shadow-2xl cursor-pointer hover:shadow-green-500/20 hover:scale-105 transition-all duration-300 border border-gray-700/50 backdrop-blur-xl group"
           style={{ pointerEvents: 'auto' }}
           onClick={() => useCallStore.getState().maximizeCall()}
         >
           <div className="flex items-center space-x-3">
-            <div className="animate-pulse">
-              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            {/* Animated Call Indicator */}
+            <div className="relative">
+              <div className="absolute inset-0 animate-ping">
+                <div className="w-10 h-10 bg-green-500/30 rounded-full"></div>
+              </div>
+              <div className="relative flex items-center justify-center w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full">
+                <svg
+                  className="w-5 h-5 text-white"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M20 15.5c-1.25 0-2.45-.2-3.57-.57-.35-.11-.74-.03-1.02.24l-2.2 2.2c-2.83-1.44-5.15-3.75-6.59-6.59l2.2-2.21c.28-.26.36-.65.25-1C8.7 6.45 8.5 5.25 8.5 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1z"/>
+                </svg>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-medium">Call in progress</p>
-              <p className="text-xs text-gray-400">
+
+            {/* Call Info */}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white group-hover:text-green-400 transition-colors">
+                Call in progress
+              </p>
+              <p className="text-xs text-gray-400 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+                </svg>
                 {activeCall.participants.size} participant{activeCall.participants.size !== 1 ? 's' : ''}
               </p>
             </div>
-            <svg
-              className="w-5 h-5 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 11l5-5 5 5M7 17l5-5 5 5"
-              />
-            </svg>
+
+            {/* Expand Icon */}
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-800/50 group-hover:bg-gray-700/50 transition-colors">
+              <svg
+                className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 11l5-5m0 0l5 5m-5-5v12"
+                />
+              </svg>
+            </div>
           </div>
         </div>
       )}

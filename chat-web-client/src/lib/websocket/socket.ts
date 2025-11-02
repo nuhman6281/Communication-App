@@ -11,26 +11,41 @@ class WebSocketService {
   private socket: Socket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  private intentionalDisconnect = false; // Track if disconnect was intentional (logout)
 
   /**
    * Initialize WebSocket connection
    */
   connect() {
+    console.log('[WebSocket] 🔌 connect() called');
+
+    // Reset intentional disconnect flag
+    this.intentionalDisconnect = false;
+
     // Try to get token from localStorage directly as fallback
     const { accessToken } = useAuthStore.getState();
     const token = accessToken || localStorage.getItem('accessToken');
 
     if (!token) {
-      console.warn('[WebSocket] No access token, skipping connection');
+      console.error('[WebSocket] ❌ No access token available');
+      console.error('[WebSocket] Cannot connect without authentication token');
       return;
     }
 
     if (this.socket?.connected) {
-      console.log('[WebSocket] Already connected');
+      console.log('[WebSocket] ✅ Already connected, socket ID:', this.socket.id);
       return;
     }
 
-    console.log('[WebSocket] Connecting to', API_CONFIG.wsURL);
+    // If socket exists but is disconnected, try to reconnect it
+    if (this.socket && !this.socket.connected) {
+      console.log('[WebSocket] 🔄 Socket exists but disconnected, attempting to reconnect...');
+      this.socket.connect();
+      return;
+    }
+
+    console.log('[WebSocket] 🌐 Creating new socket connection to', API_CONFIG.wsURL);
+    console.log('[WebSocket] Using token:', token.substring(0, 20) + '...');
 
     this.socket = io(API_CONFIG.wsURL, {
       auth: {
@@ -41,9 +56,12 @@ class WebSocketService {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: this.maxReconnectAttempts,
+      timeout: 20000,
+      autoConnect: true,
     });
 
     this.setupEventListeners();
+    console.log('[WebSocket] ⏳ Socket created, waiting for connection...');
   }
 
   /**
@@ -53,46 +71,69 @@ class WebSocketService {
     if (!this.socket) return;
 
     this.socket.on('connect', () => {
-      console.log('[WebSocket] Connected successfully', this.socket?.id);
+      console.log('[WebSocket] ✅ Connected successfully');
+      console.log('[WebSocket] Socket ID:', this.socket?.id);
       this.reconnectAttempts = 0;
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('[WebSocket] Disconnected:', reason);
+      console.log('[WebSocket] ⚠️ Disconnected, reason:', reason);
+      console.log('[WebSocket] Intentional disconnect?', this.intentionalDisconnect);
+
+      // Don't try to reconnect if it was an intentional disconnect (logout)
+      if (this.intentionalDisconnect) {
+        console.log('[WebSocket] This was an intentional disconnect, not attempting to reconnect');
+        return;
+      }
+
+      // Auto-reconnect on unexpected disconnection
+      if (reason === 'transport close' || reason === 'transport error') {
+        console.log('[WebSocket] 🔄 Connection lost, socket will auto-reconnect...');
+      }
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('[WebSocket] Connection error:', error.message);
+      console.error('[WebSocket] ❌ Connection error:', error.message);
       this.reconnectAttempts++;
 
+      console.log('[WebSocket] Reconnect attempts:', this.reconnectAttempts, '/', this.maxReconnectAttempts);
+
       if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        console.error('[WebSocket] Max reconnection attempts reached');
-        this.disconnect();
+        console.error('[WebSocket] ❌ Max reconnection attempts reached');
+        console.error('[WebSocket] Please check:');
+        console.error('[WebSocket] 1. Backend server is running');
+        console.error('[WebSocket] 2. Token is valid');
+        console.error('[WebSocket] 3. Network connection is stable');
       }
     });
 
     this.socket.on('error', (error) => {
-      console.error('[WebSocket] Socket error:', error);
+      console.error('[WebSocket] ❌ Socket error:', error);
     });
 
     this.socket.on('reconnect', (attemptNumber) => {
-      console.log('[WebSocket] Reconnected after', attemptNumber, 'attempts');
+      console.log('[WebSocket] ✅ Reconnected after', attemptNumber, 'attempts');
       this.reconnectAttempts = 0;
     });
 
     this.socket.on('reconnect_failed', () => {
-      console.error('[WebSocket] Reconnection failed');
+      console.error('[WebSocket] ❌ Reconnection failed');
     });
   }
 
   /**
    * Disconnect WebSocket
+   * Call this only on logout or when user explicitly wants to disconnect
    */
   disconnect() {
     if (this.socket) {
-      console.log('[WebSocket] Disconnecting');
+      console.log('[WebSocket] 🔌 Disconnecting socket (intentional)...');
+      this.intentionalDisconnect = true;
       this.socket.disconnect();
       this.socket = null;
+      console.log('[WebSocket] ✅ Socket disconnected and cleared');
+    } else {
+      console.log('[WebSocket] No socket to disconnect');
     }
   }
 

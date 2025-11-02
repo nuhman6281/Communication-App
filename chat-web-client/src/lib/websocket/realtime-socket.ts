@@ -14,26 +14,41 @@ class RealtimeSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10; // Increased from 5
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private intentionalDisconnect = false; // Track if disconnect was intentional (logout)
 
   /**
    * Initialize WebSocket connection to realtime service
    */
   connect() {
+    console.log('[RealtimeSocket] 🔌 connect() called');
+
+    // Reset intentional disconnect flag
+    this.intentionalDisconnect = false;
+
     // Try to get token from localStorage directly as fallback
     const { accessToken } = useAuthStore.getState();
     const token = accessToken || localStorage.getItem('accessToken');
 
     if (!token) {
-      console.warn('[RealtimeSocket] No access token, skipping connection');
+      console.error('[RealtimeSocket] ❌ No access token available');
+      console.error('[RealtimeSocket] Cannot connect without authentication token');
       return;
     }
 
     if (this.socket?.connected) {
-      console.log('[RealtimeSocket] Already connected');
+      console.log('[RealtimeSocket] ✅ Already connected, socket ID:', this.socket.id);
       return;
     }
 
-    console.log('[RealtimeSocket] Connecting to', REALTIME_URL);
+    // If socket exists but is disconnected, try to reconnect it
+    if (this.socket && !this.socket.connected) {
+      console.log('[RealtimeSocket] 🔄 Socket exists but disconnected, attempting to reconnect...');
+      this.socket.connect();
+      return;
+    }
+
+    console.log('[RealtimeSocket] 🌐 Creating new socket connection to', REALTIME_URL);
+    console.log('[RealtimeSocket] Using token:', token.substring(0, 20) + '...');
 
     this.socket = io(REALTIME_URL, {
       auth: {
@@ -49,6 +64,7 @@ class RealtimeSocketService {
     });
 
     this.setupEventListeners();
+    console.log('[RealtimeSocket] ⏳ Socket created, waiting for connection...');
   }
 
   /**
@@ -58,7 +74,8 @@ class RealtimeSocketService {
     if (!this.socket) return;
 
     this.socket.on('connect', () => {
-      console.log('[RealtimeSocket] Connected to WebRTC signaling server', this.socket?.id);
+      console.log('[RealtimeSocket] ✅ Connected to WebRTC signaling server');
+      console.log('[RealtimeSocket] Socket ID:', this.socket?.id);
       this.reconnectAttempts = 0;
 
       // Emit custom event for WebRTC initialization
@@ -68,21 +85,38 @@ class RealtimeSocketService {
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('[RealtimeSocket] Disconnected:', reason);
+      console.log('[RealtimeSocket] ⚠️ Disconnected, reason:', reason);
+      console.log('[RealtimeSocket] Intentional disconnect?', this.intentionalDisconnect);
 
       // Emit custom event for cleanup
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('realtime-socket:disconnected', { detail: { reason } }));
       }
+
+      // Don't try to reconnect if it was an intentional disconnect (logout)
+      if (this.intentionalDisconnect) {
+        console.log('[RealtimeSocket] This was an intentional disconnect, not attempting to reconnect');
+        return;
+      }
+
+      // Auto-reconnect on unexpected disconnection
+      if (reason === 'transport close' || reason === 'transport error') {
+        console.log('[RealtimeSocket] 🔄 Connection lost, socket will auto-reconnect...');
+      }
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('[RealtimeSocket] Connection error:', error.message);
+      console.error('[RealtimeSocket] ❌ Connection error:', error.message);
       this.reconnectAttempts++;
 
+      console.log('[RealtimeSocket] Reconnect attempts:', this.reconnectAttempts, '/', this.maxReconnectAttempts);
+
       if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        console.error('[RealtimeSocket] Max reconnection attempts reached');
-        this.disconnect();
+        console.error('[RealtimeSocket] ❌ Max reconnection attempts reached');
+        console.error('[RealtimeSocket] Please check:');
+        console.error('[RealtimeSocket] 1. Backend server is running');
+        console.error('[RealtimeSocket] 2. Token is valid');
+        console.error('[RealtimeSocket] 3. Network connection is stable');
       }
     });
 
@@ -107,12 +141,17 @@ class RealtimeSocketService {
 
   /**
    * Disconnect WebSocket
+   * Call this only on logout or when user explicitly wants to disconnect
    */
   disconnect() {
     if (this.socket) {
-      console.log('[RealtimeSocket] Disconnecting');
+      console.log('[RealtimeSocket] 🔌 Disconnecting socket (intentional)...');
+      this.intentionalDisconnect = true;
       this.socket.disconnect();
       this.socket = null;
+      console.log('[RealtimeSocket] ✅ Socket disconnected and cleared');
+    } else {
+      console.log('[RealtimeSocket] No socket to disconnect');
     }
   }
 

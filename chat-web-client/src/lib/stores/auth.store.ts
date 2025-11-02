@@ -80,10 +80,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        console.log('[AuthStore] 🚪 Logging out user...');
+
         // Clear tokens from localStorage
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
 
+        // Update state
         set({
           user: null,
           accessToken: null,
@@ -91,6 +94,14 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           isLoading: false,
         });
+
+        // Emit logout event for socket cleanup
+        if (typeof window !== 'undefined') {
+          console.log('[AuthStore] Emitting logout event for socket cleanup...');
+          window.dispatchEvent(new CustomEvent('app:logout'));
+        }
+
+        console.log('[AuthStore] ✅ Logout complete');
       },
 
       setLoading: (isLoading) => set({ isLoading }),
