@@ -402,9 +402,9 @@ chat-web-client/
 │   │   ├── MessageBubble.tsx - Individual message rendering, sender info, timestamp, read status, reactions display, reply/forward/edit/delete context menu, reply threading
 │   │   ├── MessageContentRenderer.tsx - Message content parser, markdown rendering, code syntax highlighting, link previews, file attachments display, embedded media
 │   │   │
-│   │   ├── GlobalCallContainer.tsx - Global call state manager, renders active call UI at root level, persists across navigation, minimized call indicator
-│   │   ├── VideoCallOverlay.tsx - Draggable call window (800x600), video grid layout, local video PiP (bottom-right), remote video full-screen, call controls (mute/video/screen share/end), call duration timer, connection status indicator
-│   │   ├── IncomingCallModal.tsx - Incoming call notification modal, animated rings, caller info with avatar, call type badge (audio/video), accept/reject buttons, ringtone autoplay
+│   │   ├── GlobalCallContainer.tsx - Global call state manager with React portal rendering, minimized call indicator (draggable), persistent across navigation
+│   │   ├── VideoCallOverlay.tsx - Draggable call window with video grid, avatar display for audio calls, screen sharing support, call controls (mute/video/screen share/end), duration timer
+│   │   ├── IncomingCallModal.tsx - Incoming call notification with caller info, accept/reject actions, ringtone
 │   │   │
 │   │   ├── GlobalSearch.tsx - Global search overlay (Cmd/Ctrl+K), search input with filters (messages/files/contacts), recent searches history, result navigation, Escape to close
 │   │   ├── NotificationsPanel.tsx - Right sidebar notifications panel, categorized notifications (messages/mentions/calls/groups/system), mark as read/unread, clear notification, click to navigate
@@ -500,7 +500,7 @@ chat-web-client/
 │   │   ├── stores/
 │   │   │   ├── index.ts - Zustand stores barrel export
 │   │   │   ├── auth.store.ts - Auth store: user, accessToken, refreshToken, isAuthenticated, setAuth(), logout(), updateTokens(), refreshUser()
-│   │   │   ├── call.store.ts - Call store: activeCall, participants, initiateCall(), acceptCall(), endCall(), toggleAudio(), toggleVideo()
+│   │   │   ├── call.store.ts - Call store with state-first pattern: activeCall, participants, localStream, media states (isAudioEnabled, isVideoEnabled), initiateCall(), acceptCall(), endCall(), toggleAudio(), toggleVideo(), updateCallType(), setLocalStream()
 │   │   │   ├── conversation.store.ts - Conversation store: conversations map, selectedConversation, messages, addMessage(), updateMessage()
 │   │   │   ├── presence.store.ts - Presence store: onlineUsers, typingUsers, setPresence(), addTypingUser(), removeTypingUser()
 │   │   │   ├── workspace.store.ts - Workspace store: currentWorkspace, workspaces, channels, members
@@ -513,7 +513,7 @@ chat-web-client/
 │   │   │   └── events.ts - WebSocket event type definitions and event handler setup
 │   │   │
 │   │   ├── webrtc/
-│   │   │   └── webrtc.service.ts - WebRTC manager: initiateCall(), acceptCall(), endCall(), toggleAudio(), toggleVideo(), switchToVideo(), handleOffer(), handleAnswer(), createPeerConnection(), ICE candidate handling
+│   │   │   └── webrtc.service.ts - WebRTC manager with state-first pattern: getLocalStream() with track-state sync, initiateCall(), acceptCall(), endCall(), toggleAudio(), toggleVideo(), switchToVideo() with immutable updates, handleOffer(), handleAnswer(), createPeerConnection() with call-type-based offer constraints (offerToReceiveVideo based on callType), ICE handling, stream cloning for React updates
 │   │   │
 │   │   ├── api/
 │   │   │   ├── client.ts - Axios instance with base URL, auth interceptor (adds JWT token), response interceptor (handles 401/token refresh), error handler
@@ -626,9 +626,9 @@ realtime-service/
 
 **Real-Time Communication:**
 
-- `GlobalCallContainer.tsx` - Call state manager, portal renderer, minimized indicator, persistent across routes
-- `VideoCallOverlay.tsx` - Floating draggable call window (800x600), video grid, screen share layout
-- `IncomingCallModal.tsx` - Floating draggable call notification, accept/reject, quick reply options
+- `GlobalCallContainer.tsx` - Call state manager, portal rendering, draggable minimized indicator, route persistence
+- `VideoCallOverlay.tsx` - Draggable call window, video/avatar grid display, screen sharing, call controls, duration tracking
+- `IncomingCallModal.tsx` - Call notification modal, caller info, accept/reject, ringtone
 - `GlobalSearch.tsx` - Cmd/Ctrl+K global search, filters (messages/files/contacts), recent history
 
 **Features:**
@@ -652,7 +652,7 @@ realtime-service/
 
 - `auth.store.ts` - User authentication state, setAuth(), logout(), updateTokens(), refreshUser()
 - `conversation.store.ts` - Active conversations map, selected conversation, setMessages(), addMessage()
-- `call.store.ts` - Active call state, participants map, initiateCall(), acceptCall(), endCall(), toggleAudio()
+- `call.store.ts` - Active call state with media management, participants map, localStream sync, initiateCall(), acceptCall(), endCall(), toggleAudio(), toggleVideo(), updateCallType()
 - `presence.store.ts` - User online status, typing indicators, setTyping(), clearTyping()
 - `workspace.store.ts` - Current workspace, channels, members, permissions
 - `ui.store.ts` - Theme, sidebar state, notifications panel toggle, modal states
@@ -670,7 +670,7 @@ realtime-service/
 
 **lib/webrtc/**
 
-- `webrtc.service.ts` - WebRTC manager, initiateCall(), acceptCall(), toggleAudio(), toggleVideo(), switchToVideo(), handleOffer(), handleAnswer(), createPeerConnection()
+- `webrtc.service.ts` - WebRTC manager with state-first pattern, getLocalStream() syncs tracks with store, initiateCall(), acceptCall(), toggleAudio(), toggleVideo(), switchToVideo() uses immutable updates, handleOffer(), handleAnswer(), createPeerConnection() with call-type-based constraints, createOffer() sets offerToReceiveVideo based on callType (critical for audio call mic functionality), stream cloning for React
 
 ### API Layer (TanStack Query + Axios)
 
@@ -1663,20 +1663,6 @@ All changes were tested in a live session with the following scenarios:
 ✅ **Mic/video controls now work reliably in all scenarios**
 ✅ WebRTC calls initiate successfully (call:initiate event emits)
 
-**UI Visibility Fixes (Same Session):**
-
-Also fixed call UI visibility issues reported by user:
-
-#### VideoCallOverlay.tsx
-**Problem:** Title bar icons and status badges barely visible on dark background
-**Changes:**
-- Title bar icons: `text-gray-400` → `text-gray-300`
-- Status badges: `bg-green-500/20` → `bg-green-500/30` with `border border-green-500/50`
-- Badge text: `text-green-400` → `text-green-200`
-- Badge icons: `text-green-400` → `text-green-300`
-
-**Result:** Significantly improved contrast and visibility of all call UI elements
-
 ---
 
 ## Testing Guide
@@ -1699,8 +1685,8 @@ Also fixed call UI visibility issues reported by user:
 
 ## Documentation Maintenance
 
-**Last Updated:** November 2, 2025
-**Version:** 2.0.0
+**Last Updated:** January 2025
+**Version:** 2.1.0
 **Total Files Documented:** 318 files (130 frontend + 180 backend + 8 realtime)
 
 **CRITICAL MAINTENANCE RULE:** This documentation MUST be updated with EVERY code change, no matter how small.

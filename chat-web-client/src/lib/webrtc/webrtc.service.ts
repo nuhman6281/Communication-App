@@ -365,16 +365,16 @@ class WebRTCService {
       }
       console.log('[WebRTC] ✅ User:', user.username, '(', user.id, ')');
 
-      // Get local media stream
+      // CRITICAL FIX: Update store FIRST to set proper media states before getting stream
+      console.log('[WebRTC] 🔄 Creating call in store (callId will be pending)...');
+      useCallStore.getState().initiateCall(conversationId, callType, participants);
+
+      // Get local media stream AFTER store is updated with correct states
       console.log('[WebRTC] 🎥 Requesting local media stream...');
       console.log('[WebRTC]   Audio: true');
       console.log('[WebRTC]   Video:', callType === 'video');
       await this.getLocalStream(callType === 'video');
       console.log('[WebRTC] ✅ Local media stream acquired');
-
-      // Update store FIRST to set initiatorId
-      console.log('[WebRTC] 🔄 Creating call in store (callId will be pending)...');
-      useCallStore.getState().initiateCall(conversationId, callType, participants);
 
       // Set initiator ID
       const activeCall = useCallStore.getState().activeCall;
@@ -419,17 +419,17 @@ class WebRTCService {
       console.log('[WebRTC] ✅ Found incoming call from:', incomingCall.from.username);
       console.log('[WebRTC]   Call type:', incomingCall.callType);
 
-      // Get local media stream
+      // CRITICAL FIX: Accept call in store FIRST to set proper media states
+      console.log('[WebRTC] 🔄 Accepting call in store...');
+      useCallStore.getState().acceptCall(callId);
+      console.log('[WebRTC] ✅ Call accepted in store with proper media states');
+
+      // Get local media stream AFTER store is updated
       console.log('[WebRTC] 🎥 Requesting local media stream...');
       console.log('[WebRTC]   Audio: true');
       console.log('[WebRTC]   Video:', incomingCall.callType === 'video');
       await this.getLocalStream(incomingCall.callType === 'video');
       console.log('[WebRTC] ✅ Local media stream acquired');
-
-      // Accept the call in store
-      console.log('[WebRTC] 🔄 Accepting call in store...');
-      useCallStore.getState().acceptCall(callId);
-      console.log('[WebRTC] ✅ Call accepted in store, overlay should appear');
 
       // Add the initiator as a participant
       console.log('[WebRTC] 👤 Adding initiator as participant:', incomingCall.from.userId);
@@ -478,9 +478,30 @@ class WebRTCService {
   }
 
   async getLocalStream(video: boolean = true): Promise<MediaStream> {
+    // CRITICAL FIX: Check if we need video but current stream doesn't have it
     if (this.localStream) {
-      console.log('[WebRTC] Reusing existing local stream');
-      return this.localStream;
+      const hasVideo = this.localStream.getVideoTracks().length > 0;
+      console.log('[WebRTC] Existing local stream found');
+      console.log('[WebRTC]   Has video:', hasVideo, '| Needs video:', video);
+
+      // If stream already matches what we need, reuse it
+      if ((video && hasVideo) || (!video && !hasVideo)) {
+        console.log('[WebRTC] ✅ Reusing existing local stream (tracks match requirements)');
+        // CRITICAL FIX: Always sync with store even when reusing
+        useCallStore.getState().setLocalStream(this.localStream);
+        return this.localStream;
+      }
+
+      // If we have video but don't need it (shouldn't happen), remove video tracks
+      if (!video && hasVideo) {
+        console.log('[WebRTC] Removing video tracks from existing stream');
+        this.localStream.getVideoTracks().forEach(track => track.stop());
+        useCallStore.getState().setLocalStream(this.localStream);
+        return this.localStream;
+      }
+
+      // If we need video but don't have it, fall through to request new stream with video
+      console.log('[WebRTC] Need to add video to existing audio-only stream');
     }
 
     try {
@@ -505,6 +526,20 @@ class WebRTCService {
       console.log('[WebRTC] ✅ Local stream acquired successfully');
       console.log('[WebRTC] Audio tracks:', audioTracks.length, audioTracks.map(t => t.label));
       console.log('[WebRTC] Video tracks:', videoTracks.length, videoTracks.map(t => t.label));
+
+      // CRITICAL FIX: Sync track enabled states with store
+      const { isAudioEnabled, isVideoEnabled } = useCallStore.getState();
+      console.log('[WebRTC] Syncing track states with store - Audio:', isAudioEnabled, 'Video:', isVideoEnabled);
+
+      audioTracks.forEach(track => {
+        track.enabled = isAudioEnabled;
+        console.log('[WebRTC]   Audio track enabled:', track.enabled);
+      });
+
+      videoTracks.forEach(track => {
+        track.enabled = isVideoEnabled;
+        console.log('[WebRTC]   Video track enabled:', track.enabled);
+      });
 
       useCallStore.getState().setLocalStream(this.localStream);
 
@@ -646,11 +681,21 @@ class WebRTCService {
 
         // Attempt ICE restart
         try {
-          const offer = await pc.createOffer({ iceRestart: true });
+          // CRITICAL FIX: Set constraints based on call type for ICE restart
+          const activeCall = useCallStore.getState().activeCall;
+          const isVideoCall = activeCall?.callType === 'video';
+
+          console.log('[WebRTC] Creating ICE restart offer with constraints:');
+          console.log('[WebRTC]   offerToReceiveVideo:', isVideoCall);
+
+          const offer = await pc.createOffer({
+            iceRestart: true,
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: isVideoCall,
+          });
           await pc.setLocalDescription(offer);
 
-          // Get active call for callId
-          const activeCall = useCallStore.getState().activeCall;
+          // Validate callId
           if (!activeCall || !activeCall.callId || activeCall.callId === 'pending') {
             console.error('[WebRTC] Cannot send ICE restart offer - no valid callId');
             return;
@@ -713,15 +758,22 @@ class WebRTCService {
     const pc = this.createPeerConnection(userId);
 
     try {
+      // CRITICAL FIX: Set offerToReceiveVideo based on actual call type
+      const activeCall = useCallStore.getState().activeCall;
+      const isVideoCall = activeCall?.callType === 'video';
+
+      console.log('[WebRTC] Creating offer with constraints:');
+      console.log('[WebRTC]   offerToReceiveAudio: true');
+      console.log('[WebRTC]   offerToReceiveVideo:', isVideoCall);
+
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: true,
+        offerToReceiveVideo: isVideoCall, // Only for video calls
       });
 
       await pc.setLocalDescription(offer);
 
-      // Get active call for callId
-      const activeCall = useCallStore.getState().activeCall;
+      // Validate callId (activeCall already declared above)
       if (!activeCall || !activeCall.callId || activeCall.callId === 'pending') {
         console.error('[WebRTC] Cannot send offer - no valid callId');
         return;
@@ -745,15 +797,25 @@ class WebRTCService {
     try {
       await pc.setRemoteDescription(offer);
 
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      // Get active call for callId
+      // CRITICAL FIX: Get call type BEFORE creating answer to set proper constraints
       const activeCall = useCallStore.getState().activeCall;
       if (!activeCall || !activeCall.callId || activeCall.callId === 'pending') {
         console.error('[WebRTC] Cannot send answer - no valid callId');
         return;
       }
+
+      const isVideoCall = activeCall.callType === 'video';
+
+      console.log('[WebRTC] Creating answer with constraints:');
+      console.log('[WebRTC]   Call type:', activeCall.callType);
+      console.log('[WebRTC]   offerToReceiveAudio: true');
+      console.log('[WebRTC]   offerToReceiveVideo:', isVideoCall);
+
+      const answer = await pc.createAnswer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: isVideoCall,
+      });
+      await pc.setLocalDescription(answer);
 
       console.log('[WebRTC] Sending answer to:', userId, 'for call:', activeCall.callId);
 
@@ -763,7 +825,7 @@ class WebRTCService {
         sdp: answer,
       });
     } catch (error) {
-      console.error('[WebRTC] Failed to handle offer:', error);
+      console.error('[WebRTC] Failed to handle answer:', error);
     }
   }
 
@@ -956,9 +1018,10 @@ class WebRTCService {
       });
       console.log('[WebRTC] ✅ Video track added to', peerCount, 'peer connection(s)');
 
-      // Update call type
+      // CRITICAL FIX: Update call type immutably using store action
       console.log('[WebRTC] 🔄 Updating call type from', activeCall.callType, 'to video');
-      activeCall.callType = 'video';
+      useCallStore.getState().updateCallType('video');
+      console.log('[WebRTC] ✅ Call type updated to video (immutable)');
 
       // CRITICAL FIX: Clone local stream to trigger React re-render
       console.log('[WebRTC] 🔄 Cloning local stream to create new reference for React');
@@ -969,15 +1032,6 @@ class WebRTCService {
 
       useCallStore.getState().setLocalStream(clonedLocalStream);
       console.log('[WebRTC] ✅ Local stream updated with new reference - should trigger local video display');
-      console.log('[WebRTC] ✅ Call type updated to video');
-
-      // Update store to show video is enabled
-      console.log('[WebRTC] 🔄 Updating store to enable video...');
-      const currentState = useCallStore.getState().activeCall;
-      if (currentState && !currentState.isVideoEnabled) {
-        useCallStore.getState().toggleVideo();
-        console.log('[WebRTC] ✅ Video enabled in store');
-      }
 
       // Renegotiate with all peers
       console.log('[WebRTC] 🔄 Starting renegotiation with all peers...');
@@ -1021,8 +1075,18 @@ class WebRTCService {
     console.log('[WebRTC] Signaling state:', pc.signalingState);
 
     try {
-      console.log('[WebRTC] 📝 Creating new offer...');
-      const offer = await pc.createOffer();
+      // CRITICAL FIX: Set constraints based on current call type
+      const activeCall = useCallStore.getState().activeCall;
+      const isVideoCall = activeCall?.callType === 'video';
+
+      console.log('[WebRTC] 📝 Creating new offer for renegotiation...');
+      console.log('[WebRTC]   Current call type:', activeCall?.callType);
+      console.log('[WebRTC]   offerToReceiveVideo:', isVideoCall);
+
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: isVideoCall,
+      });
       console.log('[WebRTC] ✅ Offer created');
       console.log('[WebRTC] Offer type:', offer.type);
       console.log('[WebRTC] Offer SDP length:', offer.sdp?.length || 0);
@@ -1032,8 +1096,7 @@ class WebRTCService {
       console.log('[WebRTC] ✅ Local description set');
       console.log('[WebRTC] New signaling state:', pc.signalingState);
 
-      // Get active call for callId
-      const activeCall = useCallStore.getState().activeCall;
+      // Validate callId (activeCall already declared above)
       if (!activeCall || !activeCall.callId || activeCall.callId === 'pending') {
         console.error('[WebRTC] ❌ Cannot renegotiate - no valid callId');
         return;

@@ -68,6 +68,7 @@ interface CallState {
   toggleAudio: () => void;
   toggleVideo: () => void;
   toggleScreenShare: () => void;
+  updateCallType: (callType: CallType) => void;
 
   // Actions - Participant Management
   addParticipant: (userId: string, participant: CallParticipant) => void;
@@ -121,6 +122,10 @@ export const useCallStore = create<CallState>()(
         set({
           activeCall,
           isCallOverlayVisible: true,
+          // CRITICAL FIX: Set media states based on call type
+          isAudioEnabled: true, // Audio always starts enabled
+          isVideoEnabled: callType === 'video', // Video only for video calls
+          isScreenSharing: false,
         });
       },
 
@@ -168,6 +173,10 @@ export const useCallStore = create<CallState>()(
             incomingCall: null,
             isCallOverlayVisible: true,
             isIncomingCallModalVisible: false,
+            // CRITICAL FIX: Set media states based on incoming call type
+            isAudioEnabled: true, // Audio always starts enabled
+            isVideoEnabled: incomingCall.callType === 'video', // Video only for video calls
+            isScreenSharing: false,
           });
         }
       },
@@ -201,11 +210,15 @@ export const useCallStore = create<CallState>()(
           });
         }
 
+        // CRITICAL FIX: Reset all states to initial values
         set({
           activeCall: null,
           localStream: null,
           isCallOverlayVisible: false,
           isScreenSharing: false,
+          // Reset media states to default
+          isAudioEnabled: true,
+          isVideoEnabled: true,
         });
       },
 
@@ -231,10 +244,15 @@ export const useCallStore = create<CallState>()(
         const { localStream, isVideoEnabled } = get();
         if (localStream) {
           const videoTracks = localStream.getVideoTracks();
-          videoTracks.forEach(track => {
-            track.enabled = !isVideoEnabled;
-          });
-          set({ isVideoEnabled: !isVideoEnabled });
+          // CRITICAL FIX: Only toggle if video tracks exist
+          if (videoTracks.length > 0) {
+            videoTracks.forEach(track => {
+              track.enabled = !isVideoEnabled;
+            });
+            set({ isVideoEnabled: !isVideoEnabled });
+          } else {
+            console.warn('[CallStore] Cannot toggle video - no video tracks in local stream');
+          }
         }
       },
 
@@ -242,6 +260,22 @@ export const useCallStore = create<CallState>()(
       toggleScreenShare: () => {
         // Screen share logic will be implemented in the WebRTC service
         set(state => ({ isScreenSharing: !state.isScreenSharing }));
+      },
+
+      // Update call type (for switching from audio to video)
+      updateCallType: (callType) => {
+        set(state => {
+          if (!state.activeCall) return state;
+
+          return {
+            activeCall: {
+              ...state.activeCall,
+              callType,
+            },
+            // Update video enabled state when switching to video
+            isVideoEnabled: callType === 'video' ? true : state.isVideoEnabled,
+          };
+        });
       },
 
       // Add participant to call

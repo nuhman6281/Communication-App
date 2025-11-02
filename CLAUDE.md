@@ -134,6 +134,68 @@ PROJECT_DOCUMENTATION.md:
 
 ---
 
+### 📝 Documentation Writing Style (MANDATORY)
+
+**Critical Rule**: Documentation must be **normalized and concise** - write as if features were always present.
+
+**✅ DO:**
+- State what the file **does** (functionality)
+- Be concise - list core features only
+- Write in present tense as if feature existed from day one
+- Use simple, clear language
+
+**❌ DON'T:**
+- Mention "fixed", "improved", "changed", "updated", "enhanced"
+- Include implementation details (pixel sizes, color codes, library versions)
+- Describe how something was changed or what was wrong before
+- Write verbose explanations or technical specifications
+
+**Examples:**
+
+```markdown
+# ❌ WRONG (too verbose, mentions changes):
+VideoCallOverlay.tsx - Draggable/resizable call window with dual validation
+for video display, proper effect dependencies for call type changes, enhanced
+avatar grid for audio calls (192px circular avatars with unique gradients per
+participant, animated speaking rings), RemoteAudio component for hidden audio
+element playback in audio-only calls, ScreenShareDisplay component...
+
+# ✅ CORRECT (normalized, concise):
+VideoCallOverlay.tsx - Draggable call window, video/avatar grid display,
+screen sharing, call controls, duration tracking
+```
+
+```markdown
+# ❌ WRONG (mentions fixes and improvements):
+GlobalCallContainer.tsx - Fixed minimized window to be draggable with dark
+gradient background matching main dialog, improved text contrast, enhanced
+with double-click to expand feature
+
+# ✅ CORRECT (normalized):
+GlobalCallContainer.tsx - Call state manager, portal rendering, draggable
+minimized indicator, route persistence
+```
+
+```markdown
+# ❌ WRONG (includes technical details):
+call.store.ts - Fixed state initialization bug by setting isVideoEnabled based
+on callType, added new updateCallType() action to prevent direct mutations,
+improved toggleVideo() with track existence checks
+
+# ✅ CORRECT (functional description):
+call.store.ts - Call state management with media controls, participant tracking,
+call lifecycle actions
+```
+
+**Format Template:**
+```
+ComponentName.tsx - [Core function 1], [core function 2], [core function 3]
+```
+
+Keep each file description to **one line, maximum 100 characters** in tree view sections.
+
+---
+
 ### Update CLAUDE.md When:
 
 **Update Triggers for Architecture Changes**:
@@ -207,14 +269,20 @@ CLAUDE.md:
 # ========================================
 # STEP 3: Update PROJECT_DOCUMENTATION.md
 # ========================================
+# ⚠️  IMPORTANT: Follow "Documentation Writing Style" rules above
+#     - Write normalized, concise descriptions
+#     - No "fixed", "improved", "changed" language
+#     - State what files DO, not what was changed
+#     - Keep descriptions under 100 characters
+
 # 3a. Update tree view if file structure changed
-#     - Add new files with descriptions
+#     - Add new files with descriptions (normalized style)
 #     - Remove deleted files
-#     - Update modified file descriptions
+#     - Update modified file descriptions (state functionality only)
 
 # 3b. Update API/WebSocket sections if applicable
-#     - Add new endpoints
-#     - Update endpoint descriptions
+#     - Add new endpoints (normalized descriptions)
+#     - Update endpoint descriptions (what they do, not changes)
 #     - Add new WebSocket events
 
 # 3c. Update Database Schema if entities changed
@@ -222,7 +290,7 @@ CLAUDE.md:
 #     - Update relationships
 
 # 3d. Add to Recent Changes if notable fix/feature
-#     - Date + description of change
+#     - Date + description of change (can mention what was fixed here)
 #     - Impact on architecture
 
 # 3e. Update "Last Updated" date at bottom
@@ -1172,6 +1240,335 @@ peerConnection.onicecandidate = (event) => {
 // ❌ INCORRECT: Missing steps, no error handling
 const offer = await peerConnection.createOffer();
 socket.emit('offer', offer); // Missing setLocalDescription
+```
+
+### WebRTC Media Management Patterns (CRITICAL)
+
+**Rule 1: State-First Pattern - ALWAYS Update Store BEFORE Requesting Media**
+
+```typescript
+// ✅ CORRECT: Set store state FIRST, then get media
+async initiateCall(conversationId: string, callType: 'audio' | 'video', participants: string[]) {
+  // STEP 1: Update store with correct media states
+  useCallStore.getState().initiateCall(conversationId, callType, participants);
+  //   This sets:
+  //     isAudioEnabled: true
+  //     isVideoEnabled: callType === 'video'  // false for audio, true for video
+
+  // STEP 2: Get local stream AFTER store has correct states
+  await this.getLocalStream(callType === 'video');
+  //   Media tracks will be synced with store states on creation
+
+  // STEP 3: Proceed with call initialization
+  // ...
+}
+
+// ❌ INCORRECT: Get media first, update store later
+async initiateCall(conversationId: string, callType: 'audio' | 'video', participants: string[]) {
+  await this.getLocalStream(callType === 'video'); // BAD: Store states wrong
+  useCallStore.getState().initiateCall(conversationId, callType, participants); // Too late
+}
+```
+
+**Rule 2: Immutable State Updates - NEVER Mutate State Directly**
+
+```typescript
+// ✅ CORRECT: Use store actions for state updates
+async switchToVideo() {
+  // Add video track to stream
+  const videoTrack = await getVideoTrack();
+  this.localStream.addTrack(videoTrack);
+
+  // Update call type using immutable store action
+  useCallStore.getState().updateCallType('video'); // Triggers React re-render
+
+  // Clone stream to create new reference for React
+  const clonedStream = new MediaStream(this.localStream.getTracks());
+  useCallStore.getState().setLocalStream(clonedStream);
+}
+
+// ❌ INCORRECT: Direct mutation doesn't trigger React updates
+async switchToVideo() {
+  const activeCall = useCallStore.getState().activeCall;
+  activeCall.callType = 'video'; // BAD: Direct mutation, no re-render
+}
+```
+
+**Rule 3: Track State Synchronization - Sync Tracks with Store on Creation**
+
+```typescript
+// ✅ CORRECT: Sync track enabled states with store after getUserMedia
+async getLocalStream(video: boolean): Promise<MediaStream> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: true,
+    video: video ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+  });
+
+  // CRITICAL: Sync track states with store
+  const { isAudioEnabled, isVideoEnabled } = useCallStore.getState();
+
+  stream.getAudioTracks().forEach(track => {
+    track.enabled = isAudioEnabled; // Match store state
+  });
+
+  stream.getVideoTracks().forEach(track => {
+    track.enabled = isVideoEnabled; // Match store state
+  });
+
+  useCallStore.getState().setLocalStream(stream);
+  return stream;
+}
+
+// ❌ INCORRECT: Tracks enabled but store says disabled (or vice versa)
+async getLocalStream(video: boolean): Promise<MediaStream> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video });
+  // No sync - track.enabled might not match store state
+  return stream;
+}
+```
+
+**Rule 4: Dual Validation - Check Both State AND Actual Tracks**
+
+```typescript
+// ✅ CORRECT: Validate both state flag and actual track presence
+const VideoTile = ({ isVideoEnabled, localStream }) => {
+  // Check both conditions
+  const hasVideoTrack = (localStream?.getVideoTracks().length || 0) > 0;
+  const showVideo = isVideoEnabled && hasVideoTrack;
+
+  return (
+    <div>
+      {showVideo ? (
+        <video srcObject={localStream} />
+      ) : (
+        <div>Avatar placeholder</div>
+      )}
+    </div>
+  );
+};
+
+// ❌ INCORRECT: Only check state flag
+const VideoTile = ({ isVideoEnabled, localStream }) => {
+  return showVideo ? <video srcObject={localStream} /> : <div>Avatar</div>;
+  // Problem: Might try to show video when no video tracks exist
+};
+```
+
+**Rule 5: Proper Effect Dependencies - Track All Relevant State**
+
+```typescript
+// ✅ CORRECT: Include all dependencies that affect rendering
+useEffect(() => {
+  if (localVideoRef.current && localStream) {
+    localVideoRef.current.srcObject = localStream;
+    localVideoRef.current.play();
+  }
+}, [localStream, call.callType, isVideoEnabled]); // All relevant dependencies
+
+// ❌ INCORRECT: Missing dependencies
+useEffect(() => {
+  if (localVideoRef.current && localStream) {
+    localVideoRef.current.srcObject = localStream;
+  }
+}, [localStream]); // Missing call.callType - won't update on audio→video switch
+```
+
+**Rule 6: Safe Toggle Operations - Only Toggle If Tracks Exist**
+
+```typescript
+// ✅ CORRECT: Check track existence before toggling
+toggleVideo: () => {
+  const { localStream, isVideoEnabled } = get();
+  if (localStream) {
+    const videoTracks = localStream.getVideoTracks();
+
+    // Safety check
+    if (videoTracks.length > 0) {
+      videoTracks.forEach(track => {
+        track.enabled = !isVideoEnabled;
+      });
+      set({ isVideoEnabled: !isVideoEnabled });
+    } else {
+      console.warn('Cannot toggle video - no video tracks in stream');
+    }
+  }
+};
+
+// ❌ INCORRECT: Toggle state even when no tracks exist
+toggleVideo: () => {
+  set(state => ({ isVideoEnabled: !state.isVideoEnabled }));
+  // Problem: State says enabled but no actual video tracks
+};
+```
+
+**Rule 7: Stream Cloning for React Updates - Create New References**
+
+```typescript
+// ✅ CORRECT: Clone stream to trigger React re-render
+pc.ontrack = (event) => {
+  const [remoteStream] = event.streams;
+
+  // Clone to create new object reference for React
+  const clonedStream = new MediaStream(remoteStream.getTracks());
+
+  useCallStore.getState().updateParticipant(userId, {
+    stream: clonedStream, // New reference triggers useEffect
+  });
+};
+
+// ❌ INCORRECT: Reuse same stream reference
+pc.ontrack = (event) => {
+  const [remoteStream] = event.streams;
+
+  useCallStore.getState().updateParticipant(userId, {
+    stream: remoteStream, // Same reference, React might not detect change
+  });
+};
+```
+
+**Rule 8: Audio/Video Call Type Initialization - Set Correct States**
+
+```typescript
+// ✅ CORRECT: Initialize store with correct media states for call type
+initiateCall: (conversationId, callType, participants) => {
+  const activeCall: ActiveCall = {
+    callId: 'pending',
+    conversationId,
+    callType,
+    status: 'initiating',
+    participants: new Map(),
+    startedAt: new Date(),
+    isMinimized: false,
+  };
+
+  set({
+    activeCall,
+    isCallOverlayVisible: true,
+    // CRITICAL: Set based on call type
+    isAudioEnabled: true,              // Always true
+    isVideoEnabled: callType === 'video', // false for audio, true for video
+    isScreenSharing: false,
+  });
+};
+
+// ❌ INCORRECT: Don't set media states, use defaults
+initiateCall: (conversationId, callType, participants) => {
+  set({
+    activeCall: { /* ... */ },
+    // Missing media state initialization - uses stale values
+  });
+};
+```
+
+**Rule 9: Proper Cleanup - Reset All States on Call End**
+
+```typescript
+// ✅ CORRECT: Reset all media states on call end
+endCall: () => {
+  const { activeCall, localStream } = get();
+
+  // Stop all tracks
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+  }
+
+  // Reset ALL states to defaults
+  set({
+    activeCall: null,
+    localStream: null,
+    isCallOverlayVisible: false,
+    isScreenSharing: false,
+    isAudioEnabled: true,     // Reset to default
+    isVideoEnabled: true,     // Reset to default
+  });
+};
+
+// ❌ INCORRECT: Don't reset media states
+endCall: () => {
+  set({
+    activeCall: null,
+    localStream: null,
+    // Missing: isAudioEnabled, isVideoEnabled - stale states remain
+  });
+};
+```
+
+**Rule 10: Always Sync Store When Reusing Streams**
+
+```typescript
+// ✅ CORRECT: Always update store even when reusing stream
+async getLocalStream(video: boolean): Promise<MediaStream> {
+  if (this.localStream) {
+    const hasVideo = this.localStream.getVideoTracks().length > 0;
+
+    if ((video && hasVideo) || (!video && !hasVideo)) {
+      // CRITICAL: Sync with store even when reusing
+      useCallStore.getState().setLocalStream(this.localStream);
+      return this.localStream;
+    }
+  }
+
+  // Create new stream...
+}
+
+// ❌ INCORRECT: Return cached stream without syncing
+async getLocalStream(video: boolean): Promise<MediaStream> {
+  if (this.localStream) {
+    return this.localStream; // BAD: Store might not have this reference
+  }
+  // ...
+}
+```
+
+**Rule 11: Offer Constraints Based on Call Type - CRITICAL for Audio Calls**
+
+```typescript
+// ✅ CORRECT: Set offerToReceiveVideo based on actual call type
+async createOffer(userId: string) {
+  const pc = this.createPeerConnection(userId);
+
+  const activeCall = useCallStore.getState().activeCall;
+  const isVideoCall = activeCall?.callType === 'video';
+
+  const offer = await pc.createOffer({
+    offerToReceiveAudio: true,
+    offerToReceiveVideo: isVideoCall, // false for audio, true for video
+  });
+
+  await pc.setLocalDescription(offer);
+  // Send offer...
+}
+
+// ❌ INCORRECT: Always request video, even for audio calls
+async createOffer(userId: string) {
+  const pc = this.createPeerConnection(userId);
+
+  const offer = await pc.createOffer({
+    offerToReceiveAudio: true,
+    offerToReceiveVideo: true, // BAD: Breaks audio-only calls!
+  });
+
+  // Problem: Audio tracks may not work properly because WebRTC
+  // is trying to negotiate video channels that don't exist
+}
+```
+
+**Why This Matters:**
+- Setting `offerToReceiveVideo: true` for audio-only calls causes WebRTC to negotiate video channels
+- This can interfere with audio track negotiation, causing microphone to not work
+- Audio calls need `offerToReceiveVideo: false` to work correctly
+- This applies to all offer creation: initial offers, renegotiation, ICE restarts
+
+**Apply to All Offer Creation:**
+```typescript
+// Initial offer
+createOffer() → check callType
+
+// Renegotiation (audio→video switch)
+renegotiate() → check callType
+
+// ICE restart (connection recovery)
+pc.createOffer({ iceRestart: true }) → check callType
 ```
 
 ---
