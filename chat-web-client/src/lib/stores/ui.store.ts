@@ -67,7 +67,7 @@ export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
       // Initial state
-      theme: 'system',
+      theme: 'dark',
       currentView: 'chat',
       showConversationList: true,
       showNotificationsPanel: false,

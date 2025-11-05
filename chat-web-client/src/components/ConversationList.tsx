@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -21,12 +21,14 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { useConversations, useSelfConversation } from "@/hooks";
-import { useAuthStore } from "@/lib/stores";
+import { useAuthStore, usePresenceStore } from "@/lib/stores";
+import { socketService } from "@/lib/websocket";
 import { Skeleton } from "./ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
 import { WorkspaceSelector } from "./workspace/WorkspaceSelector";
 import { NewMessageDialog } from "./NewMessageDialog";
 import { CreateChannelDialog } from "./CreateChannelDialog";
+import { UserStatusBadge } from "./UserStatusBadge";
 
 interface ConversationListProps {
   selectedId: string | null;
@@ -48,6 +50,8 @@ export function ConversationList({
   const [showNewMessageDialog, setShowNewMessageDialog] = useState(false);
   const [showCreateChannelDialog, setShowCreateChannelDialog] = useState(false);
   const { user } = useAuthStore();
+  // Subscribe to entire presenceMap to trigger re-renders when ANY presence changes
+  const presenceMap = usePresenceStore((state) => state.presenceMap);
 
   // Fetch conversations from API
   const { data, isLoading, error } = useConversations({
@@ -127,7 +131,92 @@ export function ConversationList({
     );
   };
 
+  // Get presence status from store (real-time) or API data (fallback)
+  const getPresenceStatus = (otherUser: any) => {
+    if (!otherUser?.id) return 'offline';
+
+    // Try to get from presence store first (real-time updates)
+    const presence = presenceMap[otherUser.id];
+    if (presence) {
+      console.log('[ConversationList] 🟢 Using presence from store for user', otherUser.id, ':', presence.status);
+      return presence.status;
+    }
+
+    // Fallback to API data
+    console.log('[ConversationList] ⚪ Using fallback presence from API for user', otherUser.id, ':', otherUser.presenceStatus || 'offline');
+    return otherUser.presenceStatus || 'offline';
+  };
+
   const filteredConversations = data?.items || [];
+
+  // Debug: Log presenceMap changes
+  useEffect(() => {
+    console.log('[ConversationList] 📊 Presence map updated. Total users:', Object.keys(presenceMap).length);
+    console.log('[ConversationList] Current presence states:', presenceMap);
+  }, [presenceMap]);
+
+  // Subscribe to presence updates for all direct conversation participants
+  useEffect(() => {
+    if (!filteredConversations || filteredConversations.length === 0) {
+      console.log('[ConversationList] ⏭️  No conversations to subscribe to');
+      return;
+    }
+
+    // Collect all user IDs from direct conversations
+    const userIds: string[] = [];
+    filteredConversations.forEach((conv) => {
+      if (conv.type === 'direct') {
+        const otherUser = getOtherParticipant(conv);
+        if (otherUser?.id) {
+          userIds.push(otherUser.id);
+        }
+      }
+    });
+
+    if (userIds.length === 0) {
+      console.log('[ConversationList] ⏭️  No direct conversations with valid user IDs');
+      return;
+    }
+
+    // Function to subscribe to presence
+    const subscribeToUsers = () => {
+      console.log('[ConversationList] 📡 Subscribing to presence for', userIds.length, 'users:', userIds);
+      socketService.subscribeToPresence(userIds);
+    };
+
+    // Subscribe immediately if socket is already connected
+    if (socketService.isConnected()) {
+      console.log('[ConversationList] ✅ Socket already connected, subscribing now');
+      subscribeToUsers();
+    } else {
+      console.log('[ConversationList] ⏳ Socket not connected yet, waiting for connection...');
+
+      // Listen for socket connection event
+      const handleSocketConnect = () => {
+        console.log('[ConversationList] ✅ Socket connected event received, subscribing to presence');
+        subscribeToUsers();
+      };
+
+      socketService.on('connect', handleSocketConnect);
+
+      // Cleanup: remove listener
+      return () => {
+        socketService.off('connect', handleSocketConnect);
+        if (socketService.isConnected()) {
+          console.log('[ConversationList] 🔌 Unsubscribing from presence for', userIds.length, 'users');
+          socketService.unsubscribeFromPresence(userIds);
+        }
+      };
+    }
+
+    // Cleanup: unsubscribe when component unmounts or conversations change
+    return () => {
+      if (socketService.isConnected()) {
+        console.log('[ConversationList] 🔌 Unsubscribing from presence for', userIds.length, 'users');
+        socketService.unsubscribeFromPresence(userIds);
+      }
+    };
+  }, [filteredConversations]);
 
   const getConversationIcon = (type: string) => {
     if (type === "group") return <Users className="w-3 h-3" />;
@@ -241,6 +330,8 @@ export function ConversationList({
               const convAvatar = getConversationAvatar(conversation);
               const convOnline = isOnline(conversation);
               const isSelf = isSelfConversation(conversation);
+              const otherUser = getOtherParticipant(conversation);
+              const userPresence = getPresenceStatus(otherUser);
 
               return (
                 <button
@@ -261,11 +352,14 @@ export function ConversationList({
                         )}
                       </AvatarFallback>
                     </Avatar>
-                    {convOnline &&
-                      conversation.type === "direct" &&
-                      !isSelf && (
-                        <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background"></div>
-                      )}
+                    {conversation.type === "direct" && !isSelf && (
+                      <UserStatusBadge
+                        status={userPresence}
+                        size="md"
+                        showBorder={true}
+                        className="absolute bottom-0 right-0"
+                      />
+                    )}
                   </div>
 
                   <div className="flex-1 min-w-0">

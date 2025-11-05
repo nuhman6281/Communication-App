@@ -4,8 +4,8 @@
 
 **Tech Stack:** React 18, TypeScript, Vite, NestJS 10, PostgreSQL 15, TypeORM, Socket.IO, Redis 7, MinIO, Docker
 
-**Last Updated:** November 2, 2025
-**Version:** 2.0.0
+**Last Updated:** November 5, 2025
+**Version:** 2.1.1
 **Status:** Active Development
 
 ---
@@ -23,7 +23,6 @@
 9. [Environment Variables](#environment-variables)
 10. [Development Setup](#development-setup)
 11. [Docker & Deployment](#docker--deployment)
-12. [Recent Changes](#recent-changes)
 
 ---
 
@@ -67,14 +66,18 @@ A **comprehensive enterprise chat platform** combining features from Slack, Micr
 - **chat_app_reference/** - Reference implementation only
 
 ### Supporting Files
-- **docker-compose.realtime.yml** - Docker stack for realtime service (Redis, Coturn, Nginx)
-- **nginx-realtime.conf** - Nginx reverse proxy configuration for WebRTC
-- **start-realtime.sh** - Startup script for realtime service with dependencies
-- **.env** - Root environment variables
+- **docker-compose.yml** - Unified Docker stack for all services (PostgreSQL, Redis, MinIO, Backend, Realtime, Coturn, Nginx)
+- **nginx-realtime.conf** - Nginx reverse proxy configuration for WebRTC with sticky sessions
+- **.env** - Root environment variables for all services
+- **DOCKER_GUIDE.md** - Complete Docker operations and troubleshooting guide
 - **package.json** - Monorepo workspace configuration
-- **CLAUDE.md** - Claude Code project guidance
-- **PROJECT_ARCHITECTURE.md** - Existing architecture documentation
+- **CLAUDE.md** - Claude Code project guidance and architecture patterns
+- **PROJECT_ARCHITECTURE.md** - System architecture documentation
 - **comprehensive_chat_app_prompt.md** - Original project specification (4,500+ lines)
+
+### Archived Files
+- **docker-compose.realtime.yml.old** - Old realtime service stack (archived)
+- **chat-backend/docker-compose.yml.old** - Old backend infrastructure stack (archived)
 
 ---
 
@@ -398,7 +401,7 @@ chat-web-client/
 │   │   ├── Sidebar.tsx - Left navigation bar, workspace selector, search button (Cmd+K), notifications badge, call history, navigation icons, user avatar with status
 │   │   ├── ConversationList.tsx - Conversation list panel, search filter, type tabs (All/Direct/Groups/Channels), conversation items with avatars/names/last message/unread badges/timestamps
 │   │   ├── ChatWindow.tsx - Main chat view, message display area, header with call buttons (audio/video), typing indicators, scroll to bottom, message input composer
-│   │   ├── MessageComposer.tsx - Message input field with auto-grow, emoji picker popover, file attachment button, voice message recorder, AI assistant integration, send on Enter (Shift+Enter for newline)
+│   │   ├── MessageComposer.tsx - Message input with auto-grow, markdown formatting, emoji picker, file/image/video attachments, AI text enhancement (premium), tone adjustment (professional/casual/formal/friendly/concise), send on Enter
 │   │   ├── MessageBubble.tsx - Individual message rendering, sender info, timestamp, read status, reactions display, reply/forward/edit/delete context menu, reply threading
 │   │   ├── MessageContentRenderer.tsx - Message content parser, markdown rendering, code syntax highlighting, link previews, file attachments display, embedded media
 │   │   │
@@ -1397,29 +1400,59 @@ LOG_LEVEL=info
 
 ## Docker Setup
 
-### Realtime Service Stack (docker-compose.realtime.yml)
+### Unified Docker Stack (docker-compose.yml)
+
+**All services run in a single compose stack at the project root.**
 
 **Services:**
+- **postgres** - PostgreSQL 15 database (port 5432)
+- **redis** - Main Redis for backend caching, queues, Socket.IO (port 6379)
+- **redis-realtime** - Redis for WebRTC signaling adapter (port 6380)
+- **minio** - S3-compatible storage (ports 9000, 9001)
+- **backend** - NestJS API server (port 3001)
 - **realtime-service** - WebRTC signaling server (port 4000)
-- **redis-realtime** - Redis for Socket.IO adapter (port 6380 mapped to 6379)
 - **coturn** - TURN/STUN server for NAT traversal (ports 3478, 5349, 49152-49200)
-- **nginx-realtime** - Reverse proxy (port 8080)
+- **nginx** - Reverse proxy for realtime service with sticky sessions (port 8080)
 
-**Network:** chat-network (172.25.0.0/16)
+**Network:** chatapp-network (172.25.0.0/16)
 
-**Volumes:** redis_realtime_data
+**Volumes:**
+- postgres_data, redis_data, redis_realtime_data, minio_data
+- backend_logs, realtime_logs
 
-### Commands
+### Quick Commands
 ```bash
-# Start realtime service stack
-docker-compose -f docker-compose.realtime.yml up -d
+# Start all services
+docker compose up -d
 
-# View logs
-docker-compose -f docker-compose.realtime.yml logs -f
+# View logs (all services)
+docker compose logs -f
+
+# View logs (specific service)
+docker compose logs -f backend
+docker compose logs -f realtime-service
+
+# Restart services
+docker compose restart
 
 # Stop services
-docker-compose -f docker-compose.realtime.yml down
+docker compose down
+
+# Stop and remove volumes (fresh start)
+docker compose down -v
+
+# Rebuild services
+docker compose up -d --build
 ```
+
+### Complete Guide
+
+See **DOCKER_GUIDE.md** for comprehensive documentation including:
+- Service details and health checks
+- Troubleshooting common issues
+- Database/Redis operations
+- Production deployment checklist
+- Backup and restore procedures
 
 ---
 
@@ -1528,143 +1561,6 @@ cd chat-web-client && npm run dev
 
 ---
 
-## Recent Changes
-
-### Socket Connection Fixes (November 2, 2025)
-
-**Problem:** Critical socket connection issues affecting WebRTC calls and real-time messaging
-- Sockets disconnecting on every page refresh
-- Silent connection failures (no auto-reconnection)
-- Microphone not working in voice calls ("works in rare scenarios only")
-- User reported: "mic is not working when a voice call started and attended"
-- Console logs showing: `[RealtimeSocket] ❌ Not connected, cannot emit event: call:initiate`
-
-**Root Cause Analysis:**
-1. React useEffect cleanup was disconnecting sockets on every component re-render
-2. No mechanism to differentiate intentional logout vs unexpected disconnection
-3. Socket connection state not checked before creating new instances
-4. No auto-reconnection strategy for network issues or server restarts
-5. Dual socket management (messaging + WebRTC) lacked lifecycle coordination
-
-**Files Modified:**
-
-#### 1. chat-web-client/src/App.tsx (Major Rewrite)
-**Changes:**
-- Added connection state checks to prevent duplicate socket creation:
-  ```typescript
-  if (!messagingAlreadyConnected) {
-    socketService.connect();
-  }
-  ```
-- **REMOVED socket disconnect from useEffect cleanup** (sockets now persist across navigation)
-- Added heartbeat interval (30 seconds) to monitor and restore connections:
-  ```typescript
-  setInterval(() => {
-    if (!socketService.isConnected() && isAuthenticated) {
-      socketService.connect();
-    }
-  }, 30000);
-  ```
-- Added dedicated logout event handler:
-  ```typescript
-  window.addEventListener('app:logout', () => {
-    socketService.disconnect();
-    realtimeSocket.disconnect();
-  });
-  ```
-- Added realtime socket disconnection handler with auto-reconnect:
-  ```typescript
-  if (isAuthenticated && event.detail?.reason !== 'io client disconnect') {
-    setTimeout(() => {
-      if (!realtimeSocket.isConnected()) {
-        realtimeSocket.connect();
-      }
-    }, 2000);
-  }
-  ```
-- Event-driven WebRTC initialization (waits for actual socket connection)
-
-#### 2. chat-web-client/src/lib/websocket/realtime-socket.ts
-**Changes:**
-- Added `intentionalDisconnect` flag to differentiate logout vs network issues:
-  ```typescript
-  private intentionalDisconnect = false;
-  ```
-- Enhanced `connect()` method with socket reuse logic:
-  ```typescript
-  // If socket exists but disconnected, reconnect it
-  if (this.socket && !this.socket.connected) {
-    console.log('[RealtimeSocket] 🔄 Socket exists but disconnected, attempting to reconnect...');
-    this.socket.connect();
-    return;
-  }
-  ```
-- Improved `disconnect()` to set intentional flag:
-  ```typescript
-  disconnect() {
-    this.intentionalDisconnect = true;
-    this.socket.disconnect();
-    this.socket = null;
-  }
-  ```
-- Enhanced disconnect event handler to prevent reconnection on logout:
-  ```typescript
-  this.socket.on('disconnect', (reason) => {
-    if (this.intentionalDisconnect) {
-      console.log('[RealtimeSocket] Intentional disconnect, not attempting to reconnect');
-      return;
-    }
-  });
-  ```
-
-#### 3. chat-web-client/src/lib/websocket/socket.ts (Messaging Socket)
-**Changes:** Identical pattern to realtime-socket.ts
-- Added `intentionalDisconnect` flag
-- Enhanced connection logic with socket reuse
-- Improved error handling and logging
-- Better disconnect handling (only on explicit logout)
-
-#### 4. chat-web-client/src/lib/stores/auth.store.ts
-**Changes:**
-- Added logout event emission for socket cleanup:
-  ```typescript
-  logout: () => {
-    // ... clear state ...
-
-    // Emit logout event for socket cleanup
-    window.dispatchEvent(new CustomEvent('app:logout'));
-  }
-  ```
-
-#### 5. chat-web-client/src/lib/webrtc/webrtc.service.ts
-**Changes:**
-- Added comprehensive logging in `toggleAudio()` and `toggleVideo()`:
-  ```typescript
-  console.log('[WebRTC] 🎤 toggleAudio() called');
-  console.log('[WebRTC] Found', audioTracks.length, 'audio tracks');
-  ```
-- Better error messages when stream isn't ready
-- Track-by-track logging for debugging
-
-**Testing & Verification:**
-All changes were tested in a live session with the following scenarios:
-1. ✅ Page refresh maintains socket connections
-2. ✅ Network interruption triggers auto-reconnect
-3. ✅ Logout cleanly disconnects both sockets
-4. ✅ Mic/video toggle works immediately after call connect
-5. ✅ No duplicate socket connections on component re-renders
-
-**Result:**
-✅ Persistent connections across page reloads and navigation
-✅ Auto-recovery after network issues (2-second delay + heartbeat)
-✅ Clean logout with proper socket disconnection
-✅ Comprehensive debugging logs for troubleshooting
-✅ Zero duplicate connections
-✅ **Mic/video controls now work reliably in all scenarios**
-✅ WebRTC calls initiate successfully (call:initiate event emits)
-
----
-
 ## Testing Guide
 
 ### Unit Tests
@@ -1685,8 +1581,8 @@ All changes were tested in a live session with the following scenarios:
 
 ## Documentation Maintenance
 
-**Last Updated:** January 2025
-**Version:** 2.1.0
+**Last Updated:** November 5, 2025
+**Version:** 2.1.1
 **Total Files Documented:** 318 files (130 frontend + 180 backend + 8 realtime)
 
 **CRITICAL MAINTENANCE RULE:** This documentation MUST be updated with EVERY code change, no matter how small.

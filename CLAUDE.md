@@ -1,6 +1,6 @@
 # CLAUDE.md - Project Rules & Architecture Guidelines
 
-**Last Updated:** January 2025
+**Last Updated:** November 5, 2025
 **Purpose:** Definitive guide for all feature implementation and architecture decisions in this codebase
 
 ---
@@ -29,9 +29,12 @@ A **comprehensive enterprise chat platform** combining features from Slack, Micr
 
 ### Master Documentation
 - **Complete Spec**: `comprehensive_chat_app_prompt.md` (4,500+ lines) - Original project specification
-- **Complete File Docs**: `PROJECT_DOCUMENTATION.md` (1,725 lines) - Every file documented with tree views
+- **Complete File Docs**: `PROJECT_DOCUMENTATION.md` - Every file documented with tree views (CURRENT STATE ONLY)
 - **Architecture**: `PROJECT_ARCHITECTURE.md` - System design and technical decisions
 - **This File**: `CLAUDE.md` - Project rules and implementation guidelines
+- **Change History**: Create `CHANGELOG.md` if you need to track fixes, updates, and feature additions over time
+
+**⚠️ CRITICAL**: `PROJECT_DOCUMENTATION.md` is a **snapshot of current state**, NOT a history log. Never add "Recent Changes" sections or update history to it.
 
 ### Project Structure
 ```
@@ -105,7 +108,6 @@ Communication App/
 7. ✅ **Database entity field added/changed** → Update schema
 8. ✅ **Environment variable added** → Update env section
 9. ✅ **Configuration changed** → Update relevant section
-10. ✅ **Bug fix with architecture impact** → Update Recent Changes
 
 **Documentation Sections to Maintain**:
 ```
@@ -117,9 +119,15 @@ PROJECT_DOCUMENTATION.md:
 ├── WebSocket Events Reference
 ├── Database Schema
 ├── Environment Variables
-├── Recent Changes (ALWAYS update with fixes)
-└── Documentation Maintenance (update date)
+└── Documentation Maintenance (update date only)
 ```
+
+**⚠️ DO NOT ADD TO PROJECT_DOCUMENTATION.md:**
+- Recent Changes sections
+- Update history
+- Change logs
+- Fix descriptions
+- "What was changed" narratives
 
 **Example Update**:
 ```markdown
@@ -136,7 +144,23 @@ PROJECT_DOCUMENTATION.md:
 
 ### 📝 Documentation Writing Style (MANDATORY)
 
-**Critical Rule**: Documentation must be **normalized and concise** - write as if features were always present.
+**CRITICAL RULE**: PROJECT_DOCUMENTATION.md is a **CURRENT STATE SNAPSHOT**, NOT a history log.
+
+**What PROJECT_DOCUMENTATION.md IS:**
+- A normalized description of what currently exists in the codebase
+- Written as if all features were always present
+- Current state only - no history, no change tracking
+- Simple, functional descriptions of what each file does
+
+**What PROJECT_DOCUMENTATION.md IS NOT:**
+- ❌ NOT a changelog
+- ❌ NOT an update history
+- ❌ NOT a "Recent Changes" document
+- ❌ NOT a place to mention fixes, improvements, or modifications
+
+**For Change Tracking:** Use a separate `CHANGELOG.md` file or update history in `CLAUDE.md`
+
+---
 
 **✅ DO:**
 - State what the file **does** (functionality)
@@ -149,6 +173,7 @@ PROJECT_DOCUMENTATION.md:
 - Include implementation details (pixel sizes, color codes, library versions)
 - Describe how something was changed or what was wrong before
 - Write verbose explanations or technical specifications
+- Add "Recent Changes" sections or update history
 
 **Examples:**
 
@@ -289,11 +314,9 @@ CLAUDE.md:
 #     - Add new tables/fields
 #     - Update relationships
 
-# 3d. Add to Recent Changes if notable fix/feature
-#     - Date + description of change (can mention what was fixed here)
-#     - Impact on architecture
+# 3d. Update "Last Updated" date at bottom (date only, no change notes)
 
-# 3e. Update "Last Updated" date at bottom
+# ⚠️  IMPORTANT: DO NOT add "Recent Changes" or any update history to PROJECT_DOCUMENTATION.md
 
 # ========================================
 # STEP 4: Update CLAUDE.md (if applicable)
@@ -367,11 +390,11 @@ git commit -m "feat: [feature] + updated documentation"
 ```bash
 # Change: Fixed WebSocket reconnection logic
 # Update PROJECT_DOCUMENTATION.md:
-#   - Update socket.ts file description with fix details
-#   - Add to Recent Changes with date + description
+#   - Update socket.ts file description (state what it does now, no "fixed" language)
 # Update CLAUDE.md:
 #   - Update WebSocket lifecycle pattern if approach changed
 #   - Add reconnection best practice to Real-Time Communication Patterns
+#   - Document the bug fix in CLAUDE.md history if needed
 ```
 
 **Example 4: Refactor/Breaking Change**
@@ -379,12 +402,12 @@ git commit -m "feat: [feature] + updated documentation"
 # Change: Migrated from REST to tRPC for type-safety
 # Update PROJECT_DOCUMENTATION.md:
 #   - Add trpc/ folder to tree view
-#   - Update API endpoints to show tRPC procedures
-#   - Add to Recent Changes as major migration
+#   - Update API endpoints to show tRPC procedures (current state only)
 # Update CLAUDE.md:
 #   - Add tRPC to tech stack
 #   - Replace REST patterns with tRPC patterns in API Design Patterns
 #   - Update Feature Implementation Workflow to use tRPC
+#   - Document migration in CLAUDE.md history section if needed
 ```
 
 ---
@@ -871,6 +894,88 @@ export function Button({ children }) {
       {children}
     </button>
   );
+}
+```
+
+**Rule 4: AI Enhancement Integration Pattern**
+```typescript
+// ✅ CORRECT: Premium AI features with proper access control
+// Component integration
+import { useEnhanceMessage } from "@/hooks/useAI";
+import { useAuthStore } from "@/lib/stores";
+import { isPremiumUser } from "@/lib/utils/subscription";
+import type { ToneType } from "@/lib/api/endpoints/ai.api";
+
+export function MessageComposer() {
+  const [showAIEnhance, setShowAIEnhance] = useState(false);
+  const { user } = useAuthStore();
+  const enhanceMessage = useEnhanceMessage();
+  const isPremium = isPremiumUser(user);
+  const hasEnhanceAccess = isPremium;
+
+  const handleEnhance = async (tone: ToneType) => {
+    if (!message.trim() || !hasEnhanceAccess) return;
+
+    try {
+      const result = await enhanceMessage.mutateAsync({
+        content: message.trim(),
+        tone,
+      });
+      setMessage(result.enhanced);
+      setShowAIEnhance(false);
+    } catch (error) {
+      console.error("Failed to enhance message:", error);
+    }
+  };
+
+  const toneOptions: Array<{ value: ToneType; label: string; description: string; icon: string }> = [
+    { value: "professional", label: "Professional", description: "Formal and business-like", icon: "💼" },
+    { value: "casual", label: "Casual", description: "Relaxed and friendly", icon: "😊" },
+    { value: "formal", label: "Formal", description: "Polite and respectful", icon: "🎩" },
+    { value: "friendly", label: "Friendly", description: "Warm and approachable", icon: "🤗" },
+    { value: "concise", label: "Concise", description: "Brief and to the point", icon: "⚡" },
+  ];
+
+  return (
+    // Popover with tone selection UI
+    {hasEnhanceAccess ? (
+      <Popover open={showAIEnhance} onOpenChange={setShowAIEnhance}>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="icon" disabled={message.trim().length === 0}>
+            <Sparkles className="h-5 w-5" />
+            {isPremium && <Crown className="h-3 w-3 text-amber-500" />}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent>
+          {toneOptions.map((option) => (
+            <button key={option.value} onClick={() => handleEnhance(option.value)}>
+              {option.icon} {option.label}
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
+    ) : (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" disabled>
+            <Sparkles className="h-5 w-5" />
+            <Crown className="h-3 w-3 text-amber-500" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Premium feature - Upgrade to use AI enhancement</TooltipContent>
+      </Tooltip>
+    )}
+  );
+}
+
+// ❌ INCORRECT: No access control, poor UX
+export function MessageComposer() {
+  const handleEnhance = async () => {
+    const result = await fetch('/api/ai/enhance'); // No premium check, will fail
+    setMessage(result.enhanced);
+  };
+
+  return <button onClick={handleEnhance}>Enhance</button>; // No tone selection, no loading state
 }
 ```
 
@@ -1983,17 +2088,11 @@ npm run dev                    # Start all services
 - POST /api/polls - Create poll { question, options[] }
 - POST /api/polls/:id/vote - Vote { optionId }
 
-## In Recent Changes section:
-### Polls Feature (November 2, 2025)
-**Added:** Complete polls feature
-- Backend: Polls module with voting system
-- Frontend: PollComposer and PollDisplay components
-- Real-time: WebSocket events for live vote updates
+## Update "Last Updated" date at bottom
+**Last Updated:** November 2, 2025
 
-**Files Added:**
-- chat-backend/src/modules/polls/* (7 files)
-- chat-web-client/src/components/PollComposer.tsx
-- chat-web-client/src/components/PollDisplay.tsx
+## ⚠️ DO NOT add "Recent Changes" section to PROJECT_DOCUMENTATION.md
+# If you need to track this change, add it to CLAUDE.md or create a CHANGELOG.md file
 ```
 
 **6. Commit Changes**
@@ -2046,6 +2145,6 @@ This CLAUDE.md file is the **definitive guide** for all development in this code
 
 ---
 
-**Last Updated:** November 2, 2025
+**Last Updated:** November 5, 2025
 **Maintained By:** Development Team
-**Version:** 2.0.0
+**Version:** 2.2.0 (Documentation structure improved - PROJECT_DOCUMENTATION.md is now current-state only)

@@ -110,6 +110,44 @@ export default function App() {
       setupWebSocketEvents();
     }
 
+    // Set self-user presence to online when socket connects
+    const handleSocketConnected = () => {
+      console.log('[App] 📡 Socket connected, updating self presence to online');
+      socketService.updatePresence('online');
+    };
+
+    // Listen for socket connection
+    socketService.on('connect', handleSocketConnected);
+
+    // If already connected, update presence immediately
+    if (socketService.isConnected()) {
+      socketService.updatePresence('online');
+    }
+
+    // Track user activity for presence (online/away)
+    let activityTimeout: NodeJS.Timeout;
+    const resetActivityTimer = () => {
+      clearTimeout(activityTimeout);
+
+      // Update to online if was away
+      socketService.updatePresence('online');
+
+      // Set to away after 5 minutes of inactivity
+      activityTimeout = setTimeout(() => {
+        console.log('[App] 👤 User inactive for 5 minutes, setting presence to away');
+        socketService.updatePresence('away');
+      }, 5 * 60 * 1000);
+    };
+
+    // Track mouse/keyboard activity
+    const activityEvents = ['mousedown', 'keypress', 'scroll', 'touchstart'];
+    activityEvents.forEach(event => {
+      window.addEventListener(event, resetActivityTimer);
+    });
+
+    // Initialize activity timer
+    resetActivityTimer();
+
     // Start typing indicator cleanup interval
     const cleanupInterval = startTypingCleanup();
 
@@ -138,9 +176,17 @@ export default function App() {
       console.log('[App] 🧹 Cleaning up socket connections...');
       clearInterval(heartbeatInterval);
       clearInterval(cleanupInterval);
+      clearTimeout(activityTimeout);
+
+      // Remove event listeners
       window.removeEventListener('realtime-socket:connected', handleRealtimeConnected);
       window.removeEventListener('realtime-socket:reconnected', handleRealtimeReconnected);
       window.removeEventListener('realtime-socket:disconnected', handleRealtimeDisconnected);
+      socketService.off('connect', handleSocketConnected);
+
+      activityEvents.forEach(event => {
+        window.removeEventListener(event, resetActivityTimer);
+      });
 
       // IMPORTANT: Only disconnect if user is actually logging out
       // Don't disconnect on component re-render or page navigation

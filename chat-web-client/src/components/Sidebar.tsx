@@ -15,6 +15,8 @@ import {
   Video,
   Image as ImageIcon,
 } from 'lucide-react';
+import { useUnreadNotificationCount, useConversations } from '@/hooks';
+import { useMemo } from 'react';
 
 interface SidebarProps {
   currentView: string;
@@ -24,8 +26,19 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentView, onViewChange, onNotificationsClick, onSearchClick }: SidebarProps) {
+  // Fetch unread notification count
+  const { data: unreadData } = useUnreadNotificationCount();
+  const unreadNotificationCount = unreadData?.count || 0;
+
+  // Fetch conversations to calculate unread message count
+  const { data: conversationsData } = useConversations();
+  const unreadMessageCount = useMemo(() => {
+    if (!conversationsData?.data) return 0;
+    return conversationsData.data.reduce((total, conv) => total + conv.unreadCount, 0);
+  }, [conversationsData]);
+
   const navItems = [
-    { id: 'chat', icon: MessageSquare, label: 'Chats', badge: 5 },
+    { id: 'chat', icon: MessageSquare, label: 'Chats', badge: unreadMessageCount > 0 ? unreadMessageCount : undefined },
     { id: 'stories', icon: ImageIcon, label: 'Stories' },
     { id: 'workspace', icon: Briefcase, label: 'Workspaces' },
     { id: 'profile', icon: User, label: 'Profile' },
@@ -67,9 +80,11 @@ export function Sidebar({ currentView, onViewChange, onNotificationsClick, onSea
               onClick={onNotificationsClick}
             >
               <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center">
-                3
-              </span>
+              {unreadNotificationCount > 0 && (
+                <span className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center">
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </span>
+              )}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="right">
@@ -89,7 +104,7 @@ export function Sidebar({ currentView, onViewChange, onNotificationsClick, onSea
                   size="icon"
                   className={`w-12 h-12 relative ${
                     currentView === item.id
-                      ? 'bg-white/10 hover:bg-white/20'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
                       : 'hover:bg-white/10'
                   }`}
                   onClick={() => onViewChange(item.id)}

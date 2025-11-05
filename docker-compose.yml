@@ -1,0 +1,325 @@
+# Unified Docker Compose Configuration
+# Complete Communication App Stack
+# PostgreSQL + Redis (2x) + MinIO + Backend + Realtime Service + Coturn + Nginx
+
+services:
+  # ==================== DATABASES ====================
+
+  # PostgreSQL Database (Main Backend)
+  postgres:
+    image: postgres:15-alpine
+    container_name: chatapp-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatapp}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+  # Redis (Main Backend - Caching, Bull Queue, Socket.IO Adapter)
+  redis:
+    image: redis:7-alpine
+    container_name: chatapp-redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      sh -c "if [ -n \"$$REDIS_PASSWORD\" ]; then
+        redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\";
+      else
+        redis-server --appendonly yes;
+      fi"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+  # Redis (Realtime Service - WebRTC Signaling Adapter)
+  redis-realtime:
+    image: redis:7-alpine
+    container_name: chatapp-redis-realtime
+    environment:
+      REDIS_PASSWORD: ${REDIS_REALTIME_PASSWORD:-redis-password}
+    ports:
+      - "${REDIS_REALTIME_PORT:-6380}:6379"
+    volumes:
+      - redis_realtime_data:/data
+    command: redis-server --requirepass ${REDIS_REALTIME_PASSWORD:-redis-password} --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_REALTIME_PASSWORD:-redis-password}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+  # MinIO (S3-Compatible Storage)
+  minio:
+    image: minio/minio:latest
+    container_name: chatapp-minio
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+  # ==================== APPLICATION SERVICES ====================
+
+  # NestJS Backend API
+  backend:
+    build:
+      context: ./chat-backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: chatapp-backend
+    ports:
+      - "${BACKEND_PORT:-3001}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      API_PREFIX: api
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${POSTGRES_USER:-postgres}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      DATABASE_NAME: ${POSTGRES_DB:-chatapp}
+      DATABASE_SYNC: ${DATABASE_SYNC:-true}
+      DATABASE_LOGGING: ${DATABASE_LOGGING:-true}
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: 0
+
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production-min-32-chars}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-refresh-token-secret-change-this-in-production-min-32-chars}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-7d}
+
+      # MinIO/S3
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_USE_SSL: false
+      MINIO_BUCKET: ${MINIO_BUCKET:-chatapp-media}
+
+      # OAuth - Google
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3001/api/v1/auth/google/callback}
+
+      # OAuth - GitHub
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-http://localhost:3001/api/v1/auth/github/callback}
+
+      # OAuth - Microsoft
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET}
+      MICROSOFT_CALLBACK_URL: ${MICROSOFT_CALLBACK_URL:-http://localhost:3001/api/v1/auth/microsoft/callback}
+
+      # Email (SMTP)
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM:-noreply@yourdomain.com}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-ChatApp}
+
+      # AI Provider
+      AI_PROVIDER: ${AI_PROVIDER:-groq}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_ORGANIZATION: ${OPENAI_ORGANIZATION}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+
+      # Stripe
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+
+      # Rate Limiting
+      THROTTLE_TTL: ${THROTTLE_TTL:-60}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-100}
+
+      # CORS
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:5173,http://localhost:5174}
+
+      # File Upload
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-104857600}
+      ALLOWED_FILE_TYPES: ${ALLOWED_FILE_TYPES:-image/*,video/*,audio/*,application/pdf}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      LOG_FILE: logs/app.log
+
+      TZ: UTC
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./chat-backend:/app
+      - /app/node_modules
+      - backend_logs:/app/logs
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+  # Realtime WebRTC Signaling Service
+  realtime-service:
+    build:
+      context: ./realtime-service
+      dockerfile: Dockerfile
+    container_name: chatapp-realtime-service
+    ports:
+      - "${REALTIME_PORT:-4000}:4000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      REALTIME_PORT: 4000
+
+      # Redis for Socket.IO Adapter
+      REDIS_HOST: redis-realtime
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_REALTIME_PASSWORD:-redis-password}
+      REDIS_ENABLED: "true"
+
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production-min-32-chars}
+
+      # CORS
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://localhost:5174,http://localhost:3000}
+
+      # TURN/STUN
+      TURN_ENABLED: ${TURN_ENABLED:-true}
+      TURN_SERVER_URL: turn:coturn:3478
+      TURN_USERNAME: ${TURN_USERNAME:-username}
+      TURN_PASSWORD: ${TURN_PASSWORD:-password}
+      STUN_SERVER_URL: stun:coturn:3478
+
+      # Call Configuration
+      MAX_PARTICIPANTS_PER_CALL: ${MAX_PARTICIPANTS_PER_CALL:-50}
+      CALL_TIMEOUT_MS: ${CALL_TIMEOUT_MS:-3600000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      redis-realtime:
+        condition: service_healthy
+      coturn:
+        condition: service_started
+    volumes:
+      - realtime_logs:/app/logs
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+  # Coturn TURN/STUN Server (NAT Traversal for WebRTC)
+  coturn:
+    image: coturn/coturn:latest
+    container_name: chatapp-coturn
+    ports:
+      - "${COTURN_LISTENING_PORT:-3478}:3478/tcp"
+      - "${COTURN_LISTENING_PORT:-3478}:3478/udp"
+      - "${COTURN_TLS_PORT:-5349}:5349/tcp"
+      - "${COTURN_TLS_PORT:-5349}:5349/udp"
+      - "49152-49200:49152-49200/udp"  # Media relay ports
+    environment:
+      DETECT_EXTERNAL_IP: "yes"
+      EXTERNAL_IP: ${EXTERNAL_IP:-127.0.0.1}
+      LISTENING_PORT: ${COTURN_LISTENING_PORT:-3478}
+      TLS_LISTENING_PORT: ${COTURN_TLS_PORT:-5349}
+      MIN_PORT: ${COTURN_MIN_PORT:-49152}
+      MAX_PORT: ${COTURN_MAX_PORT:-49200}
+      REALM: ${TURN_REALM:-yourdomain.com}
+      SERVER_NAME: ${TURN_SERVER_NAME:-yourdomain.com}
+      LT_CRED_MECH: "yes"
+      FINGERPRINT: "yes"
+      VERBOSE: "yes"
+      LOG_FILE: stdout
+    command: |
+      --user=${TURN_USERNAME:-username}:${TURN_PASSWORD:-password}
+      --realm=${TURN_REALM:-yourdomain.com}
+      --server-name=${TURN_SERVER_NAME:-yourdomain.com}
+      --fingerprint
+      --lt-cred-mech
+      --no-multicast-peers
+      --no-tcp-relay
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy (for Realtime Service with Sticky Sessions)
+  nginx:
+    image: nginx:alpine
+    container_name: chatapp-nginx
+    ports:
+      - "${NGINX_PORT:-8080}:80"
+    volumes:
+      - ./nginx-realtime.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - realtime-service
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+# ==================== VOLUMES ====================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  redis_realtime_data:
+    driver: local
+  minio_data:
+    driver: local
+  backend_logs:
+    driver: local
+  realtime_logs:
+    driver: local
+
+# ==================== NETWORKS ====================
+networks:
+  chatapp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16

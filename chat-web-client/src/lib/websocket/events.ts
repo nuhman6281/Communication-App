@@ -76,7 +76,12 @@ export function setupWebSocketEvents() {
     status: 'online' | 'away' | 'busy' | 'offline';
     customStatus: string | null;
   }) => {
-    console.log('[WebSocket] Presence updated:', userId, status);
+    console.log('[WebSocket] 🔔 PRESENCE UPDATE EVENT RECEIVED');
+    console.log('[WebSocket] User ID:', userId);
+    console.log('[WebSocket] Status:', status);
+    console.log('[WebSocket] Custom Status:', customStatus);
+    console.log('[WebSocket] Updating presence store...');
+
     usePresenceStore.getState().setPresence(userId, {
       userId,
       status,
@@ -84,6 +89,8 @@ export function setupWebSocketEvents() {
       isOnline: status !== 'offline',
       lastSeenAt: status === 'offline' ? new Date().toISOString() : null,
     });
+
+    console.log('[WebSocket] ✅ Presence store updated for user:', userId);
   });
 
   socketService.on('presence:batch', (presences: Array<{
@@ -91,7 +98,10 @@ export function setupWebSocketEvents() {
     status: 'online' | 'away' | 'busy' | 'offline';
     customStatus: string | null;
   }>) => {
-    console.log('[WebSocket] Batch presence update:', presences.length, 'users');
+    console.log('[WebSocket] 🔔 BATCH PRESENCE UPDATE EVENT RECEIVED');
+    console.log('[WebSocket] Number of users:', presences.length);
+    console.log('[WebSocket] Presence data:', presences);
+
     const presenceData = presences.map((p) => ({
       userId: p.userId,
       status: p.status,
@@ -100,6 +110,8 @@ export function setupWebSocketEvents() {
       lastSeenAt: p.status === 'offline' ? new Date().toISOString() : null,
     }));
     usePresenceStore.getState().setBatchPresence(presenceData);
+
+    console.log('[WebSocket] ✅ Batch presence store updated for', presences.length, 'users');
   });
 
   // ============================================================================

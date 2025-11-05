@@ -223,8 +223,27 @@ class WebSocketService {
   /**
    * Update presence status
    */
-  updatePresence(status: 'online' | 'away' | 'busy' | 'offline') {
-    this.emit('presence_update', { status });
+  updatePresence(status: 'online' | 'away' | 'do_not_disturb' | 'offline', customStatus?: string) {
+    console.log('[WebSocket] Updating presence status:', status);
+    this.emit('presence:update', { status, customStatus });
+  }
+
+  /**
+   * Subscribe to presence updates for specific users
+   */
+  subscribeToPresence(userIds: string[]) {
+    if (userIds.length === 0) return;
+    console.log('[WebSocket] Subscribing to presence for', userIds.length, 'users');
+    this.emit('presence:subscribe', { userIds });
+  }
+
+  /**
+   * Unsubscribe from presence updates
+   */
+  unsubscribeFromPresence(userIds: string[]) {
+    if (userIds.length === 0) return;
+    console.log('[WebSocket] Unsubscribing from presence for', userIds.length, 'users');
+    this.emit('presence:unsubscribe', { userIds });
   }
 
   /**

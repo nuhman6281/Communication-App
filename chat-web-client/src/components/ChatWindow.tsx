@@ -17,7 +17,7 @@ import {
   Pin,
   Users,
 } from "lucide-react";
-import { useMessages, useSendMessage, useConversation, useAddReaction, useRemoveReaction, useUpdateMessage, useDeleteMessage, usePinMessage, useUnpinMessage } from "@/hooks";
+import { useMessages, useSendMessage, useConversation, useAddReaction, useRemoveReaction, useUpdateMessage, useDeleteMessage, usePinMessage, useUnpinMessage, useBlockUser } from "@/hooks";
 import { useAuthStore, useActiveCall } from "@/lib/stores";
 import { useTypingUsers } from "@/lib/stores/presence.store";
 import { socketService } from "@/lib/websocket";
@@ -84,6 +84,7 @@ export function ChatWindow({
   const deleteMessageMutation = useDeleteMessage(conversationId);
   const pinMessageMutation = usePinMessage(conversationId);
   const unpinMessageMutation = useUnpinMessage(conversationId);
+  const blockUserMutation = useBlockUser();
 
   // Presence store for typing indicators
   const typingUsers = useTypingUsers(conversationId) || [];
@@ -277,6 +278,28 @@ export function ChatWindow({
     }
   };
 
+  const handleBlockUser = async () => {
+    if (conversation?.type !== 'direct') return;
+
+    const otherParticipant = conversation.participants?.find(
+      (p: any) => p.user?.id !== user?.id
+    );
+
+    if (!otherParticipant?.user?.id) {
+      console.error('Could not find other participant to block');
+      return;
+    }
+
+    if (window.confirm('Are you sure you want to block this user? They will not be able to message you.')) {
+      try {
+        await blockUserMutation.mutateAsync(otherParticipant.user.id);
+        onBack(); // Navigate back after blocking
+      } catch (error) {
+        console.error('Failed to block user:', error);
+      }
+    }
+  };
+
   return (
     <div className="h-full flex bg-background">
       {/* Main Chat Area */}
@@ -381,7 +404,14 @@ export function ChatWindow({
               <DropdownMenuItem>Search in Conversation</DropdownMenuItem>
               <DropdownMenuItem>Mute Notifications</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Block User</DropdownMenuItem>
+              {conversation?.type === 'direct' && (
+                <DropdownMenuItem
+                  onClick={handleBlockUser}
+                  disabled={blockUserMutation.isPending}
+                >
+                  {blockUserMutation.isPending ? 'Blocking...' : 'Block User'}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem className="text-red-600">
                 Delete Chat
               </DropdownMenuItem>

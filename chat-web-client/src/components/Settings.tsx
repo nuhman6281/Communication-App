@@ -3,8 +3,10 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Slider } from './ui/slider';
-import { ArrowLeft, Bell, Moon, Globe, Lock, Database, Smartphone, Palette, LogOut } from 'lucide-react';
-import { useLogout } from '@/hooks/useAuth';
+import { ArrowLeft, Bell, Moon, Globe, Lock, Database, Smartphone, Palette, LogOut, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useLogout, useNotificationPreferences, useUpdateNotificationPreferences } from '@/hooks';
+import { useState, useEffect } from 'react';
+import { BlockedUsers } from './BlockedUsers';
 
 interface SettingsProps {
   onBack: () => void;
@@ -12,9 +14,52 @@ interface SettingsProps {
 
 export function Settings({ onBack }: SettingsProps) {
   const { mutate: logout, isPending: isLoggingOut } = useLogout();
+  const { data: preferences, isLoading: isLoadingPreferences } = useNotificationPreferences();
+  const updatePreferences = useUpdateNotificationPreferences();
+
+  // Local state for notification preferences
+  const [notificationSettings, setNotificationSettings] = useState({
+    pushEnabled: true,
+    emailEnabled: true,
+    messageNotifications: true,
+    mentionNotifications: true,
+    callNotifications: true,
+    groupNotifications: true,
+    channelNotifications: true,
+    storyNotifications: true,
+    systemNotifications: true,
+  });
+
+  // Local state for blocked users section
+  const [showBlockedUsers, setShowBlockedUsers] = useState(false);
+
+  // Initialize from backend preferences
+  useEffect(() => {
+    if (preferences) {
+      setNotificationSettings({
+        pushEnabled: preferences.pushEnabled ?? true,
+        emailEnabled: preferences.emailEnabled ?? true,
+        messageNotifications: preferences.messageNotifications ?? true,
+        mentionNotifications: preferences.mentionNotifications ?? true,
+        callNotifications: preferences.callNotifications ?? true,
+        groupNotifications: preferences.groupNotifications ?? true,
+        channelNotifications: preferences.channelNotifications ?? true,
+        storyNotifications: preferences.storyNotifications ?? true,
+        systemNotifications: preferences.systemNotifications ?? true,
+      });
+    }
+  }, [preferences]);
 
   const handleLogout = () => {
     logout();
+  };
+
+  const handleNotificationToggle = async (key: keyof typeof notificationSettings, value: boolean) => {
+    // Optimistic update
+    setNotificationSettings((prev) => ({ ...prev, [key]: value }));
+
+    // Update backend
+    await updatePreferences.mutateAsync({ [key]: value });
   };
 
   return (
@@ -25,7 +70,7 @@ export function Settings({ onBack }: SettingsProps) {
           <Button variant="ghost" size="icon" onClick={onBack}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <h2 className="text-xl">Settings</h2>
+          <h2 className="text-xl font-semibold">Settings</h2>
         </div>
       </div>
 
@@ -34,7 +79,7 @@ export function Settings({ onBack }: SettingsProps) {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Palette className="w-5 h-5" />
-            <h3 className="text-lg">Appearance</h3>
+            <h3 className="text-lg font-semibold">Appearance</h3>
           </div>
 
           <div className="space-y-4 pl-7">
@@ -50,6 +95,7 @@ export function Settings({ onBack }: SettingsProps) {
                   <SelectItem value="system">System</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">Stored locally in browser</p>
             </div>
 
             <div className="space-y-2">
@@ -72,64 +118,160 @@ export function Settings({ onBack }: SettingsProps) {
         <div className="space-y-4 pt-4 border-t border-border">
           <div className="flex items-center gap-2">
             <Bell className="w-5 h-5" />
-            <h3 className="text-lg">Notifications</h3>
+            <h3 className="text-lg font-semibold">Notifications</h3>
           </div>
 
-          <div className="space-y-4 pl-7">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="push-notifications">Push Notifications</Label>
-                <p className="text-sm text-muted-foreground">Receive notifications on this device</p>
+          {isLoadingPreferences ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-4 pl-7">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="push-notifications">Push Notifications</Label>
+                  <p className="text-sm text-muted-foreground">Receive notifications on this device</p>
+                </div>
+                <Switch
+                  id="push-notifications"
+                  checked={notificationSettings.pushEnabled}
+                  onCheckedChange={(checked) => handleNotificationToggle('pushEnabled', checked)}
+                  disabled={updatePreferences.isPending}
+                />
               </div>
-              <Switch id="push-notifications" defaultChecked />
-            </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="sound">Notification Sound</Label>
-                <p className="text-sm text-muted-foreground">Play sound for new messages</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="email-notifications">Email Notifications</Label>
+                  <p className="text-sm text-muted-foreground">Receive notifications via email</p>
+                </div>
+                <Switch
+                  id="email-notifications"
+                  checked={notificationSettings.emailEnabled}
+                  onCheckedChange={(checked) => handleNotificationToggle('emailEnabled', checked)}
+                  disabled={updatePreferences.isPending}
+                />
               </div>
-              <Switch id="sound" defaultChecked />
-            </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="desktop-notifications">Desktop Notifications</Label>
-                <p className="text-sm text-muted-foreground">Show browser notifications</p>
+              <div className="pt-2 border-t">
+                <p className="text-sm font-medium mb-3">Notification Types</p>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="message-notifications">Messages</Label>
+                      <p className="text-sm text-muted-foreground">Direct messages</p>
+                    </div>
+                    <Switch
+                      id="message-notifications"
+                      checked={notificationSettings.messageNotifications}
+                      onCheckedChange={(checked) =>
+                        handleNotificationToggle('messageNotifications', checked)
+                      }
+                      disabled={updatePreferences.isPending}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="mention-notifications">Mentions</Label>
+                      <p className="text-sm text-muted-foreground">When someone mentions you</p>
+                    </div>
+                    <Switch
+                      id="mention-notifications"
+                      checked={notificationSettings.mentionNotifications}
+                      onCheckedChange={(checked) =>
+                        handleNotificationToggle('mentionNotifications', checked)
+                      }
+                      disabled={updatePreferences.isPending}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="call-notifications">Calls</Label>
+                      <p className="text-sm text-muted-foreground">Incoming calls</p>
+                    </div>
+                    <Switch
+                      id="call-notifications"
+                      checked={notificationSettings.callNotifications}
+                      onCheckedChange={(checked) =>
+                        handleNotificationToggle('callNotifications', checked)
+                      }
+                      disabled={updatePreferences.isPending}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="group-notifications">Groups</Label>
+                      <p className="text-sm text-muted-foreground">Group messages and updates</p>
+                    </div>
+                    <Switch
+                      id="group-notifications"
+                      checked={notificationSettings.groupNotifications}
+                      onCheckedChange={(checked) =>
+                        handleNotificationToggle('groupNotifications', checked)
+                      }
+                      disabled={updatePreferences.isPending}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="channel-notifications">Channels</Label>
+                      <p className="text-sm text-muted-foreground">Channel posts</p>
+                    </div>
+                    <Switch
+                      id="channel-notifications"
+                      checked={notificationSettings.channelNotifications}
+                      onCheckedChange={(checked) =>
+                        handleNotificationToggle('channelNotifications', checked)
+                      }
+                      disabled={updatePreferences.isPending}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="story-notifications">Stories</Label>
+                      <p className="text-sm text-muted-foreground">New stories from contacts</p>
+                    </div>
+                    <Switch
+                      id="story-notifications"
+                      checked={notificationSettings.storyNotifications}
+                      onCheckedChange={(checked) =>
+                        handleNotificationToggle('storyNotifications', checked)
+                      }
+                      disabled={updatePreferences.isPending}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="system-notifications">System</Label>
+                      <p className="text-sm text-muted-foreground">System announcements</p>
+                    </div>
+                    <Switch
+                      id="system-notifications"
+                      checked={notificationSettings.systemNotifications}
+                      onCheckedChange={(checked) =>
+                        handleNotificationToggle('systemNotifications', checked)
+                      }
+                      disabled={updatePreferences.isPending}
+                    />
+                  </div>
+                </div>
               </div>
-              <Switch id="desktop-notifications" defaultChecked />
             </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="message-preview">Message Preview</Label>
-                <p className="text-sm text-muted-foreground">Show message content in notifications</p>
-              </div>
-              <Switch id="message-preview" defaultChecked />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notification-sound">Notification Sound</Label>
-              <Select defaultValue="default">
-                <SelectTrigger id="notification-sound">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">Default</SelectItem>
-                  <SelectItem value="chime">Chime</SelectItem>
-                  <SelectItem value="ping">Ping</SelectItem>
-                  <SelectItem value="bell">Bell</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Language & Region */}
         <div className="space-y-4 pt-4 border-t border-border">
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5" />
-            <h3 className="text-lg">Language & Region</h3>
+            <h3 className="text-lg font-semibold">Language & Region</h3>
           </div>
 
           <div className="space-y-4 pl-7">
@@ -147,6 +289,7 @@ export function Settings({ onBack }: SettingsProps) {
                   <SelectItem value="ja">Japanese</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">Stored locally in browser</p>
             </div>
 
             <div className="space-y-2">
@@ -178,7 +321,7 @@ export function Settings({ onBack }: SettingsProps) {
         <div className="space-y-4 pt-4 border-t border-border">
           <div className="flex items-center gap-2">
             <Lock className="w-5 h-5" />
-            <h3 className="text-lg">Privacy & Security</h3>
+            <h3 className="text-lg font-semibold">Privacy & Security</h3>
           </div>
 
           <div className="space-y-4 pl-7">
@@ -206,9 +349,26 @@ export function Settings({ onBack }: SettingsProps) {
               <Switch id="auto-delete" />
             </div>
 
-            <Button variant="outline" className="w-full">
-              Manage Blocked Users
-            </Button>
+            <div className="space-y-4">
+              <Button
+                variant="outline"
+                className="w-full justify-between"
+                onClick={() => setShowBlockedUsers(!showBlockedUsers)}
+              >
+                Manage Blocked Users
+                {showBlockedUsers ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </Button>
+
+              {showBlockedUsers && (
+                <div className="pl-4">
+                  <BlockedUsers />
+                </div>
+              )}
+            </div>
 
             <Button variant="outline" className="w-full">
               Two-Factor Authentication
@@ -220,14 +380,14 @@ export function Settings({ onBack }: SettingsProps) {
         <div className="space-y-4 pt-4 border-t border-border">
           <div className="flex items-center gap-2">
             <Database className="w-5 h-5" />
-            <h3 className="text-lg">Data & Storage</h3>
+            <h3 className="text-lg font-semibold">Data & Storage</h3>
           </div>
 
           <div className="space-y-4 pl-7">
             <div className="flex items-center justify-between">
               <div>
                 <Label>Storage Used</Label>
-                <p className="text-sm text-muted-foreground">2.4 GB of 10 GB used</p>
+                <p className="text-sm text-muted-foreground">Local browser storage</p>
               </div>
               <Button variant="outline" size="sm">
                 Manage
@@ -258,16 +418,16 @@ export function Settings({ onBack }: SettingsProps) {
 
         {/* About */}
         <div className="space-y-4 pt-4 border-t border-border">
-          <h3 className="text-lg">About</h3>
+          <h3 className="text-lg font-semibold">About</h3>
 
           <div className="space-y-2 pl-7">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Version</span>
-              <span>1.0.0</span>
+              <span className="font-medium">1.0.0</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Build</span>
-              <span>2025.01.18</span>
+              <span className="font-medium">2025.01.18</span>
             </div>
 
             <div className="pt-4 space-y-2">
@@ -292,8 +452,17 @@ export function Settings({ onBack }: SettingsProps) {
             onClick={handleLogout}
             disabled={isLoggingOut}
           >
-            <LogOut className="w-4 h-4 mr-2" />
-            {isLoggingOut ? 'Logging out...' : 'Log Out'}
+            {isLoggingOut ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Logging out...
+              </>
+            ) : (
+              <>
+                <LogOut className="w-4 h-4 mr-2" />
+                Log Out
+              </>
+            )}
           </Button>
         </div>
       </div>

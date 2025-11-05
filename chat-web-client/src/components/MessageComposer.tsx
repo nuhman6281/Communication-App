@@ -33,9 +33,16 @@ import {
   File,
   Video,
   MapPin,
+  Sparkles,
+  Loader2,
+  Crown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "./MessageContentRenderer";
+import { useEnhanceMessage } from "@/hooks/useAI";
+import { useAuthStore } from "@/lib/stores";
+import { isPremiumUser, AIFeature, hasFeatureAccess } from "@/lib/utils/subscription";
+import type { ToneType } from "@/lib/api/endpoints/ai.api";
 
 interface MessageComposerProps {
   onSendMessage: (
@@ -76,11 +83,18 @@ export function MessageComposer({
   const [isRecording, setIsRecording] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showFormatting, setShowFormatting] = useState(false);
+  const [showAIEnhance, setShowAIEnhance] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+
+  // AI Enhancement
+  const { user } = useAuthStore();
+  const enhanceMessage = useEnhanceMessage();
+  const isPremium = isPremiumUser(user);
+  const hasEnhanceAccess = isPremium;
 
   // Update message when initialValue changes (for editing)
   useEffect(() => {
@@ -260,6 +274,33 @@ export function MessageComposer({
     "😍",
   ];
 
+  // AI Enhancement handler
+  const handleEnhance = async (tone: ToneType) => {
+    if (!message.trim() || !hasEnhanceAccess) return;
+
+    try {
+      const result = await enhanceMessage.mutateAsync({
+        content: message.trim(),
+        tone,
+      });
+
+      setMessage(result.enhanced);
+      setShowAIEnhance(false);
+      adjustTextareaHeight();
+    } catch (error) {
+      console.error("Failed to enhance message:", error);
+    }
+  };
+
+  // Tone options for AI enhancement
+  const toneOptions: Array<{ value: ToneType; label: string; description: string; icon: string }> = [
+    { value: "professional", label: "Professional", description: "Formal and business-like", icon: "💼" },
+    { value: "casual", label: "Casual", description: "Relaxed and friendly", icon: "😊" },
+    { value: "formal", label: "Formal", description: "Polite and respectful", icon: "🎩" },
+    { value: "friendly", label: "Friendly", description: "Warm and approachable", icon: "🤗" },
+    { value: "concise", label: "Concise", description: "Brief and to the point", icon: "⚡" },
+  ];
+
   return (
     <div className="border-t border-border bg-background">
       {/* Reply indicator */}
@@ -419,6 +460,104 @@ export function MessageComposer({
                 </div>
               </PopoverContent>
             </Popover>
+
+            {/* AI Enhancement (Premium) */}
+            {hasEnhanceAccess ? (
+              <Popover open={showAIEnhance} onOpenChange={setShowAIEnhance}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-10 w-10 relative",
+                          message.trim().length > 0 && "text-purple-600 dark:text-purple-400"
+                        )}
+                        disabled={disabled || message.trim().length === 0}
+                      >
+                        {enhanceMessage.isPending ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <>
+                            <Sparkles className="h-5 w-5" />
+                            {isPremium && (
+                              <Crown className="h-3 w-3 text-amber-500 absolute -top-0.5 -right-0.5" />
+                            )}
+                          </>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      Enhance with AI
+                      <Crown className="h-3 w-3 text-amber-500" />
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+                <PopoverContent className="w-80 p-4" align="start">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                        <h4 className="font-semibold text-sm">Enhance Message</h4>
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                        <Crown className="h-3 w-3" />
+                        Premium
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Choose a tone to enhance your message with AI
+                    </p>
+                    <div className="grid gap-2">
+                      {toneOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          onClick={() => handleEnhance(option.value)}
+                          disabled={enhanceMessage.isPending}
+                          className="flex items-start gap-3 p-3 rounded-lg border border-border hover:border-primary hover:bg-accent transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed group"
+                        >
+                          <span className="text-2xl group-hover:scale-110 transition-transform">{option.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm">{option.label}</div>
+                            <div className="text-xs text-muted-foreground">{option.description}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    {enhanceMessage.isPending && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Enhancing your message...
+                      </div>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 relative opacity-50 cursor-not-allowed"
+                    disabled
+                  >
+                    <Sparkles className="h-5 w-5" />
+                    <Crown className="h-3 w-3 text-amber-500 absolute -top-0.5 -right-0.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="flex items-center gap-1">
+                    <Crown className="h-3 w-3 text-amber-500" />
+                    Premium feature - Upgrade to use AI enhancement
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </TooltipProvider>
         </div>
 
