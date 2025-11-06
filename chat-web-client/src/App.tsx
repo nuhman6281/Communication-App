@@ -203,7 +203,7 @@ export default function App() {
   }, [isAuthenticated]);
 
   return (
-    <ErrorBoundary level="app" showDetails={process.env.NODE_ENV === 'development'}>
+    <ErrorBoundary level="app" showDetails={import.meta.env.MODE === 'development'}>
       <BrowserRouter>
         {/* Global Call Container - renders at root level for persistence */}
         {isAuthenticated && (

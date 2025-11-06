@@ -8,7 +8,7 @@ import { notificationsApi } from '../api/endpoints/notifications.api';
 // VAPID public key for push notifications
 // Generate with: npx web-push generate-vapid-keys
 // Replace with your own key in production
-const VAPID_PUBLIC_KEY = process.env.VITE_VAPID_PUBLIC_KEY ||
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY ||
   'BEl62iUYgUivxIkv69yViEuiBIa-Ib27SBgz0ssW95r7lCk9I_6YbHYUDiPrfSjYX0R3NvLqcZX8LJQ1CZTG9IQ';
 
 export interface PushNotificationOptions {

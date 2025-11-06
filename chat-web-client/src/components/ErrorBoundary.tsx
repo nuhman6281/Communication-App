@@ -57,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     // Send to analytics/error tracking service (e.g., Sentry)
-    if (process.env.NODE_ENV === 'production') {
+    if (import.meta.env.MODE === 'production') {
       // window.Sentry?.captureException(error, {
       //   contexts: {
       //     react: {
@@ -92,7 +92,7 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       const { error, errorInfo } = this.state;
-      const { level = 'component', showDetails = process.env.NODE_ENV === 'development' } = this.props;
+      const { level = 'component', showDetails = import.meta.env.MODE === 'development' } = this.props;
 
       // Different UI based on error level
       if (level === 'app') {
@@ -141,7 +141,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 </Button>
               </div>
 
-              {process.env.NODE_ENV === 'development' && (
+              {import.meta.env.MODE === 'development' && (
                 <div className="text-sm text-muted-foreground">
                   <Bug className="w-4 h-4 inline mr-1" />
                   Development mode - error details shown above
