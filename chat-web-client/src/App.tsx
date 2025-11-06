@@ -114,6 +114,12 @@ export default function App() {
     const handleSocketConnected = () => {
       console.log('[App] 📡 Socket connected, updating self presence to online');
       socketService.updatePresence('online');
+
+      // CRITICAL: Re-register event listeners on reconnection
+      // When socket reconnects, all event listeners are lost and must be re-registered
+      console.log('[App] 🔄 Re-registering event listeners after reconnection');
+      cleanupWebSocketEvents(); // Remove any stale listeners
+      setupWebSocketEvents(); // Re-register all event listeners
     };
 
     // Listen for socket connection

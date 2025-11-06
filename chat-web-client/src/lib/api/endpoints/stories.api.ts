@@ -5,7 +5,7 @@
 
 import { apiClient } from '../client';
 import type { CreateStoryRequest, PaginationParams } from '@/types/api.types';
-import type { Story, StoryView, PaginatedResponse } from '@/types/entities.types';
+import type { Story, StoryView, StoryReply, PaginatedResponse } from '@/types/entities.types';
 
 export const storiesApi = {
   /**
@@ -102,7 +102,15 @@ export const storiesApi = {
    * Reply to story (sends as DM)
    */
   reply: async (id: string, message: string): Promise<void> => {
-    await apiClient.post(`/stories/${id}/reply`, { message });
+    await apiClient.post(`/stories/${id}/reply`, { content: message });
+  },
+
+  /**
+   * Get story replies (owner only)
+   */
+  getReplies: async (id: string): Promise<StoryReply[]> => {
+    const response = await apiClient.get(`/stories/${id}/replies`);
+    return response.data;
   },
 
   /**
@@ -116,7 +124,8 @@ export const storiesApi = {
     latestStoryAt: string;
     unseenCount: number;
   }>> => {
-    const response = await apiClient.get('/stories/active');
+    // Backend endpoint is /stories (returns active stories by default)
+    const response = await apiClient.get('/stories');
     return response.data;
   },
 

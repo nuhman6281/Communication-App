@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { ArrowLeft, Plus, X, Send, MoreVertical, Loader2, Upload } from 'lucide-react';
+import { ArrowLeft, Plus, X, Send, MoreVertical, Loader2, Upload, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { Input } from './ui/input';
-import { useActiveStories, useMyStories, useViewStory, useReplyToStory, useUploadStory, useDeleteStory } from '@/hooks';
+import { useActiveStories, useMyStories, useViewStory, useReplyToStory, useUploadStory, useDeleteStory, useStoryReplies } from '@/hooks';
 import { useAuthStore } from '@/lib/stores';
 import { formatDistanceToNow } from 'date-fns';
 import type { Story } from '@/types/entities.types';
@@ -34,6 +34,16 @@ export function StoriesView({ onBack }: StoriesViewProps) {
   const [progress, setProgress] = useState(0);
   const [replyText, setReplyText] = useState('');
   const [uploadingFile, setUploadingFile] = useState<File | null>(null);
+  const [showReplies, setShowReplies] = useState(false);
+
+  // Calculate storyId for replies hook (must be at top level, not in conditional)
+  const currentStory = selectedUser?.stories[currentStoryIndex];
+  const isMyStory = currentStory?.userId === user?.id;
+  const storyIdForReplies = selectedUser && isMyStory && currentStory ? currentStory.id : '';
+
+  // Fetch replies for own stories (hook must be called unconditionally)
+  const { data: replies = [], isLoading: isLoadingReplies } = useStoryReplies(storyIdForReplies);
+  const replyCount = replies.length;
 
   // Auto-progress story every 5 seconds
   useEffect(() => {
@@ -148,10 +158,8 @@ export function StoriesView({ onBack }: StoriesViewProps) {
 
   // Story viewer overlay
   if (selectedUser) {
-    const currentStory = selectedUser.stories[currentStoryIndex];
     if (!currentStory) return null;
 
-    const isMyStory = currentStory.userId === user?.id;
     const timeAgo = formatDistanceToNow(new Date(currentStory.createdAt), { addSuffix: true });
 
     return (
@@ -184,6 +192,19 @@ export function StoriesView({ onBack }: StoriesViewProps) {
             </div>
           </div>
           <div className="flex gap-2">
+            {isMyStory && replyCount > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/20 relative"
+                onClick={() => setShowReplies(!showReplies)}
+              >
+                <MessageCircle className="w-5 h-5" />
+                <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                  {replyCount}
+                </span>
+              </Button>
+            )}
             {isMyStory && (
               <Button
                 variant="ghost"
@@ -207,26 +228,26 @@ export function StoriesView({ onBack }: StoriesViewProps) {
 
         {/* Story Content */}
         <div className="h-full flex items-center justify-center">
-          {currentStory.contentType === 'image' && currentStory.contentUrl ? (
+          {currentStory.type === 'image' && currentStory.mediaUrl ? (
             <img
-              src={currentStory.contentUrl}
+              src={currentStory.mediaUrl}
               alt="Story"
               className="max-h-full max-w-full object-contain"
             />
-          ) : currentStory.contentType === 'video' && currentStory.contentUrl ? (
+          ) : currentStory.type === 'video' && currentStory.mediaUrl ? (
             <video
-              src={currentStory.contentUrl}
+              src={currentStory.mediaUrl}
               className="max-h-full max-w-full object-contain"
               autoPlay
               loop
               muted
             />
-          ) : currentStory.contentType === 'text' ? (
+          ) : currentStory.type === 'text' ? (
             <div
               className="w-full h-full flex items-center justify-center p-8"
               style={{ backgroundColor: currentStory.backgroundColor || '#4F46E5' }}
             >
-              <p className="text-3xl text-center font-medium">{currentStory.textContent}</p>
+              <p className="text-3xl text-center font-medium">{currentStory.content}</p>
             </div>
           ) : null}
         </div>
@@ -234,6 +255,61 @@ export function StoriesView({ onBack }: StoriesViewProps) {
         {/* Navigation Areas */}
         <button className="absolute left-0 top-0 bottom-0 w-1/3 z-10" onClick={handlePrevious} />
         <button className="absolute right-0 top-0 bottom-0 w-1/3 z-10" onClick={handleNext} />
+
+        {/* Replies Panel (for own stories) */}
+        {isMyStory && showReplies && (
+          <div className="absolute bottom-0 left-0 right-0 z-20 bg-black/90 backdrop-blur-sm border-t border-white/20 max-h-[50vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-3 border-b border-white/20">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-4 h-4" />
+                <span className="text-sm font-medium">Replies ({replyCount})</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-white hover:bg-white/20"
+                onClick={() => setShowReplies(false)}
+              >
+                <ChevronDown className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-3 space-y-3">
+              {isLoadingReplies ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="w-5 h-5 animate-spin text-white/70" />
+                </div>
+              ) : replies.length > 0 ? (
+                replies.map((reply) => (
+                  <div key={reply.id} className="flex gap-2 items-start">
+                    <Avatar className="w-8 h-8 shrink-0">
+                      <AvatarImage src={reply.sender.avatarUrl || undefined} />
+                      <AvatarFallback>
+                        {reply.sender.username.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium truncate">
+                          {reply.sender.username}
+                        </span>
+                        <span className="text-xs text-white/50 shrink-0">
+                          {formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true })}
+                        </span>
+                      </div>
+                      <p className="text-sm text-white/90 break-words">{reply.content}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-white/50">
+                  <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No replies yet</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Reply Input (only for others' stories) */}
         {!isMyStory && (
@@ -336,13 +412,13 @@ export function StoriesView({ onBack }: StoriesViewProps) {
                   <Avatar className="w-16 h-16 ring-2 ring-gray-400">
                     <AvatarImage
                       src={
-                        story.contentType === 'image'
-                          ? story.contentUrl || undefined
+                        story.type === 'image'
+                          ? story.mediaUrl || undefined
                           : user?.avatarUrl || undefined
                       }
                     />
                     <AvatarFallback>
-                      {story.contentType === 'text' ? '💬' : '📷'}
+                      {story.type === 'text' ? '💬' : '📷'}
                     </AvatarFallback>
                   </Avatar>
                   <span className="text-xs mt-1 block text-center">
@@ -368,19 +444,19 @@ export function StoriesView({ onBack }: StoriesViewProps) {
                     onClick={() => handleStorySelect(storyGroup)}
                     className="relative rounded-lg overflow-hidden aspect-[9/16] group"
                   >
-                    {latestStory.contentType === 'image' && latestStory.contentUrl ? (
+                    {latestStory.type === 'image' && latestStory.mediaUrl ? (
                       <img
-                        src={latestStory.contentUrl}
+                        src={latestStory.mediaUrl}
                         alt={storyGroup.username}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
-                    ) : latestStory.contentType === 'text' ? (
+                    ) : latestStory.type === 'text' ? (
                       <div
                         className="w-full h-full flex items-center justify-center p-4"
                         style={{ backgroundColor: latestStory.backgroundColor || '#4F46E5' }}
                       >
                         <p className="text-white text-sm text-center line-clamp-3">
-                          {latestStory.textContent}
+                          {latestStory.content}
                         </p>
                       </div>
                     ) : (

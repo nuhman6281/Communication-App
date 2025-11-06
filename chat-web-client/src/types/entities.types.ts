@@ -253,6 +253,19 @@ export interface StoryView {
   viewedAt: string;
 }
 
+export interface StoryReply {
+  id: string;
+  storyId: string;
+  senderId: string;
+  sender: User;
+  content: string;
+  mediaUrl: string | null;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ============================================================================
 // Call Types
 // ============================================================================

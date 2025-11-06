@@ -72,6 +72,18 @@ export function useStoryViews(storyId: string, params?: PaginationParams) {
 }
 
 /**
+ * Get story replies (owner only)
+ */
+export function useStoryReplies(storyId: string) {
+  return useQuery({
+    queryKey: queryKeys.stories.replies(storyId),
+    queryFn: () => storiesApi.getReplies(storyId),
+    enabled: !!storyId,
+    staleTime: 30000, // 30 seconds
+  });
+}
+
+/**
  * Create new story
  */
 export function useCreateStory() {
@@ -187,7 +199,11 @@ export function useReplyToStory() {
       toast.success('Reply sent!');
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Failed to send reply');
+      const errorMessage = error?.response?.data?.message?.message
+        || error?.response?.data?.message
+        || error?.message
+        || 'Failed to send reply';
+      toast.error(String(errorMessage));
     },
   });
 }

@@ -49,21 +49,55 @@ class WebRTCService {
   /**
    * Initialize WebRTC service socket handlers
    * Must be called after realtime socket is connected
+   * Can be called multiple times to re-register handlers on reconnection
    */
   public initialize() {
-    if (this.initialized) {
-      console.log('[WebRTC] Already initialized');
-      return;
-    }
-
     if (!realtimeSocket.isConnected()) {
       console.warn('[WebRTC] Realtime socket not connected yet, deferring initialization');
       return;
     }
 
+    // If already initialized, clean up old handlers and re-register
+    if (this.initialized) {
+      console.log('[WebRTC] 🔄 Re-initializing after reconnection - cleaning up old handlers');
+      this.cleanupSocketHandlers();
+    }
+
     console.log('[WebRTC] Initializing service with socket handlers');
     this.initializeSocketHandlers();
     this.initialized = true;
+  }
+
+  /**
+   * Clean up socket event handlers
+   * Called before re-registering handlers on reconnection
+   */
+  private cleanupSocketHandlers() {
+    console.log('[WebRTC] 🧹 Cleaning up socket event handlers');
+
+    const events = [
+      'call:initiated',
+      'call:incoming',
+      'call:accepted',
+      'call:rejected',
+      'call:ended',
+      'call:offer',
+      'call:answer',
+      'ice-candidate',
+      'call:participant-joined',
+      'call:participant-left',
+      'call:participant-muted',
+      'call:participant-unmuted',
+      'call:participant-video-toggled',
+      'call:screen-share-started',
+      'call:screen-share-stopped',
+    ];
+
+    events.forEach(event => {
+      realtimeSocket.off(event);
+    });
+
+    console.log('[WebRTC] ✅ Socket handlers cleaned up');
   }
 
   private initializeSocketHandlers() {

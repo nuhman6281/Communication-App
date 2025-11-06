@@ -82,6 +82,15 @@ export class MessagesGateway
 
       // Emit connection success
       client.emit('connected', { userId, socketId: client.id });
+
+      // Broadcast user online status to all clients
+      this.server.emit('presence:update', {
+        userId,
+        status: 'online',
+        customStatus: null,
+      });
+
+      this.logger.log(`Broadcasted online presence for user ${userId}`);
     } catch (error) {
       this.logger.error(`Error in handleConnection: ${error.message}`);
       client.disconnect();
@@ -111,13 +120,26 @@ export class MessagesGateway
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
 
+    const userId = client.data.user?.id;
+
     // Remove socket from user's sockets
-    this.userSockets.forEach((sockets, userId) => {
+    this.userSockets.forEach((sockets, uid) => {
       const index = sockets.indexOf(client.id);
       if (index !== -1) {
         sockets.splice(index, 1);
         if (sockets.length === 0) {
-          this.userSockets.delete(userId);
+          this.userSockets.delete(uid);
+
+          // Broadcast user offline status when last socket disconnects
+          if (uid === userId) {
+            this.server.emit('presence:update', {
+              userId: uid,
+              status: 'offline',
+              customStatus: null,
+            });
+
+            this.logger.log(`Broadcasted offline presence for user ${uid}`);
+          }
         }
       }
     });
@@ -219,6 +241,73 @@ export class MessagesGateway
       });
 
     return { success: true };
+  }
+
+  /**
+   * Presence: Update user's presence status
+   */
+  @SubscribeMessage('presence:update')
+  async handlePresenceUpdate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { status: string; customStatus?: string },
+  ) {
+    const userId = client.data.user.id;
+
+    this.logger.log(`Presence update from ${userId}: ${data.status}`);
+
+    // Broadcast presence update to all connected clients
+    this.server.emit('presence:update', {
+      userId,
+      status: data.status,
+      customStatus: data.customStatus || null,
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Presence: Subscribe to specific users' presence updates
+   */
+  @SubscribeMessage('presence:subscribe')
+  async handlePresenceSubscribe(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { userIds: string[] },
+  ) {
+    const userId = client.data.user.id;
+
+    this.logger.log(`User ${userId} subscribing to presence for ${data.userIds.length} users`);
+
+    // Send current presence status for subscribed users
+    // In a real implementation, you would query the database for current presence
+    // For now, we'll send online status for all connected users
+    const presenceUpdates = data.userIds
+      .filter(uid => this.userSockets.has(uid))
+      .map(uid => ({
+        userId: uid,
+        status: 'online',
+        customStatus: null,
+      }));
+
+    if (presenceUpdates.length > 0) {
+      client.emit('presence:batch', presenceUpdates);
+    }
+
+    return { success: true, subscribedCount: data.userIds.length };
+  }
+
+  /**
+   * Presence: Unsubscribe from presence updates
+   */
+  @SubscribeMessage('presence:unsubscribe')
+  async handlePresenceUnsubscribe(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { userIds: string[] },
+  ) {
+    const userId = client.data.user.id;
+
+    this.logger.log(`User ${userId} unsubscribing from presence for ${data.userIds.length} users`);
+
+    return { success: true, unsubscribedCount: data.userIds.length };
   }
 
   /**

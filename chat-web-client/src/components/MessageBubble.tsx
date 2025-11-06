@@ -28,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { MessageContentRenderer } from "./MessageContentRenderer";
+import { StoryReplyMessage } from "./StoryReplyMessage";
 
 // Markdown rendering for message content
 
@@ -81,6 +82,12 @@ interface Message {
     pollQuestion?: string; // for poll
     pollOptions?: { id: string; text: string; votes: number }[];
     pollTotalVotes?: number;
+    // Story reply metadata
+    storyReply?: boolean;
+    storyId?: string;
+    storyType?: 'text' | 'image' | 'video';
+    storyMediaUrl?: string;
+    storyContent?: string;
     // Multiple files support
     files?: Array<{
       id: string;
@@ -140,6 +147,11 @@ export function MessageBubble({
   };
 
   const renderMessageContent = () => {
+    // Check if this is a story reply message
+    if (message.metadata?.storyReply) {
+      return <StoryReplyMessage message={message} />;
+    }
+
     return (
       <MessageContentRenderer
         message={message}

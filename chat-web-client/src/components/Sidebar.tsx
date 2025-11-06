@@ -15,8 +15,9 @@ import {
   Video,
   Image as ImageIcon,
 } from 'lucide-react';
-import { useUnreadNotificationCount, useConversations } from '@/hooks';
-import { useMemo } from 'react';
+import { useUnreadNotificationCount } from '@/hooks';
+import { useTotalUnread } from '@/lib/stores';
+import { SoundToggle } from './SoundToggle';
 
 interface SidebarProps {
   currentView: string;
@@ -30,12 +31,8 @@ export function Sidebar({ currentView, onViewChange, onNotificationsClick, onSea
   const { data: unreadData } = useUnreadNotificationCount();
   const unreadNotificationCount = unreadData?.count || 0;
 
-  // Fetch conversations to calculate unread message count
-  const { data: conversationsData } = useConversations();
-  const unreadMessageCount = useMemo(() => {
-    if (!conversationsData?.data) return 0;
-    return conversationsData.data.reduce((total, conv) => total + conv.unreadCount, 0);
-  }, [conversationsData]);
+  // Get real-time unread message count from Zustand store
+  const unreadMessageCount = useTotalUnread();
 
   const navItems = [
     { id: 'chat', icon: MessageSquare, label: 'Chats', badge: unreadMessageCount > 0 ? unreadMessageCount : undefined },
@@ -91,6 +88,9 @@ export function Sidebar({ currentView, onViewChange, onNotificationsClick, onSea
             <p>Notifications</p>
           </TooltipContent>
         </Tooltip>
+
+        {/* Sound Toggle */}
+        <SoundToggle variant="icon" className="w-12 h-12 hover:bg-white/10 text-white" />
 
         <div className="w-8 h-px bg-white/20 my-2" />
 

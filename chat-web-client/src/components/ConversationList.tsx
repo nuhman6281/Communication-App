@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { useConversations, useSelfConversation } from "@/hooks";
-import { useAuthStore, usePresenceStore } from "@/lib/stores";
+import { useAuthStore, usePresenceStore, useConversationUnread } from "@/lib/stores";
 import { socketService } from "@/lib/websocket";
 import { Skeleton } from "./ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
@@ -35,6 +35,19 @@ interface ConversationListProps {
   onSelect: (id: string) => void;
   onCreateGroup: () => void;
   onSearch?: () => void;
+}
+
+// Sub-component for real-time unread badge
+function ConversationUnreadBadge({ conversationId }: { conversationId: string }) {
+  const unreadCount = useConversationUnread(conversationId);
+
+  if (unreadCount === 0) return null;
+
+  return (
+    <Badge className="bg-blue-600 hover:bg-blue-700">
+      {unreadCount > 99 ? '99+' : unreadCount}
+    </Badge>
+  );
 }
 
 export function ConversationList({
@@ -180,37 +193,29 @@ export function ConversationList({
 
     // Function to subscribe to presence
     const subscribeToUsers = () => {
-      console.log('[ConversationList] 📡 Subscribing to presence for', userIds.length, 'users:', userIds);
-      socketService.subscribeToPresence(userIds);
+      if (socketService.isConnected()) {
+        console.log('[ConversationList] 📡 Subscribing to presence for', userIds.length, 'users:', userIds);
+        socketService.subscribeToPresence(userIds);
+      } else {
+        console.warn('[ConversationList] ⚠️ Cannot subscribe - socket not connected');
+      }
     };
 
     // Subscribe immediately if socket is already connected
-    if (socketService.isConnected()) {
-      console.log('[ConversationList] ✅ Socket already connected, subscribing now');
+    subscribeToUsers();
+
+    // Also resubscribe on socket reconnection
+    const handleReconnect = () => {
+      console.log('[ConversationList] 🔄 Socket reconnected, resubscribing to presence for', userIds.length, 'users');
       subscribeToUsers();
-    } else {
-      console.log('[ConversationList] ⏳ Socket not connected yet, waiting for connection...');
+    };
 
-      // Listen for socket connection event
-      const handleSocketConnect = () => {
-        console.log('[ConversationList] ✅ Socket connected event received, subscribing to presence');
-        subscribeToUsers();
-      };
+    socketService.on('connect', handleReconnect);
 
-      socketService.on('connect', handleSocketConnect);
-
-      // Cleanup: remove listener
-      return () => {
-        socketService.off('connect', handleSocketConnect);
-        if (socketService.isConnected()) {
-          console.log('[ConversationList] 🔌 Unsubscribing from presence for', userIds.length, 'users');
-          socketService.unsubscribeFromPresence(userIds);
-        }
-      };
-    }
-
-    // Cleanup: unsubscribe when component unmounts or conversations change
+    // Cleanup: remove listener and unsubscribe
     return () => {
+      socketService.off('connect', handleReconnect);
+
       if (socketService.isConnected()) {
         console.log('[ConversationList] 🔌 Unsubscribing from presence for', userIds.length, 'users');
         socketService.unsubscribeFromPresence(userIds);
@@ -398,11 +403,7 @@ export function ConversationList({
                         {conversation.lastMessage?.content || "No messages yet"}
                       </p>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {conversation.unreadCount > 0 && (
-                          <Badge className="bg-blue-600 hover:bg-blue-700">
-                            {conversation.unreadCount}
-                          </Badge>
-                        )}
+                        <ConversationUnreadBadge conversationId={conversation.id} />
                       </div>
                     </div>
 

@@ -154,6 +154,7 @@ export const queryKeys = {
     archived: (params?: Record<string, unknown>) => ['stories', 'archived', params] as const,
     views: (id: string, params?: Record<string, unknown>) =>
       ['stories', id, 'views', params] as const,
+    replies: (id: string) => ['stories', id, 'replies'] as const,
     myHighlights: ['stories', 'highlights', 'mine'] as const,
     highlights: (userId: string) => ['stories', 'highlights', userId] as const,
     stats: (id: string) => ['stories', id, 'stats'] as const,

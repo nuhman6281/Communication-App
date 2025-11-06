@@ -56,10 +56,10 @@ export class Story extends BaseEntity {
   @Column({ type: 'enum', enum: StoryPrivacy, default: StoryPrivacy.PUBLIC })
   privacy: StoryPrivacy;
 
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', array: true, nullable: true, default: null })
   customViewers: string[] | null; // User IDs who can view (for CUSTOM privacy)
 
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', array: true, nullable: true, default: null })
   blockedViewers: string[] | null; // User IDs who cannot view
 
   @Column({ type: 'jsonb', nullable: true })

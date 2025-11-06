@@ -5,7 +5,8 @@
 
 import { socketService } from './socket';
 import { queryClient, queryKeys, invalidateQueries } from '@/lib/query-client';
-import { usePresenceStore } from '@/lib/stores';
+import { usePresenceStore, useUnreadStore, useConversationStore, useAuthStore } from '@/lib/stores';
+import { soundService } from '@/lib/audio/sound.service';
 import { toast } from 'sonner';
 import type { Message, Notification } from '@/types/entities.types';
 
@@ -22,15 +23,38 @@ export function setupWebSocketEvents() {
   socketService.on('message:new', (message: Message) => {
     console.log('[WebSocket] New message received:', message);
 
+    // Get current user ID
+    const currentUserId = useAuthStore.getState().user?.id;
+
+    // Check if this message was sent by the current user
+    const isSelfMessage = message.senderId === currentUserId;
+
+    // Check if user is currently viewing this conversation
+    const currentConversationId = useConversationStore.getState().selectedConversationId;
+    const isViewingConversation = currentConversationId === message.conversationId;
+
+    // Only increment unread and play sound if:
+    // 1. NOT sent by current user (don't count your own messages)
+    // 2. NOT viewing this conversation
+    if (!isSelfMessage && !isViewingConversation) {
+      // Increment unread count for this conversation
+      useUnreadStore.getState().incrementUnread(message.conversationId);
+
+      // Play message notification sound
+      soundService.playMessageSound();
+
+      // Show notification toast
+      const senderName = message.sender?.username || message.sender?.email || 'Someone';
+      toast.info(`New message from ${senderName}`, {
+        duration: 3000,
+      });
+    }
+
     // Invalidate messages query for the conversation
     invalidateQueries.message(message.conversationId);
 
     // Invalidate conversations list (for last message update)
     queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all() });
-
-    // Show notification if not in the conversation
-    // (you can add logic to check if user is currently viewing this conversation)
-    // toast.info(`New message from ${message.sender.username}`);
   });
 
   socketService.on('message:updated', (message: Message) => {
@@ -43,9 +67,16 @@ export function setupWebSocketEvents() {
     invalidateQueries.message(conversationId);
   });
 
-  socketService.on('message:reaction', ({ messageId, conversationId }: { messageId: string; conversationId: string }) => {
-    console.log('[WebSocket] Message reaction updated:', messageId);
+  socketService.on('message:reaction', ({ messageId, conversationId, reaction }: { messageId: string; conversationId: string; reaction: any }) => {
+    console.log('[WebSocket] 🎭 Message reaction updated');
+    console.log('[WebSocket] MessageId:', messageId);
+    console.log('[WebSocket] ConversationId:', conversationId);
+    console.log('[WebSocket] Reaction:', reaction);
+
+    // Invalidate message query to refetch with updated reactions
     invalidateQueries.message(conversationId, messageId);
+
+    console.log('[WebSocket] ✅ Message reactions invalidated, UI should update');
   });
 
   // ============================================================================
@@ -160,6 +191,9 @@ export function setupWebSocketEvents() {
   socketService.on('call:incoming', ({ call, initiator, callType }: { call: any; initiator: any; callType: string }) => {
     console.log('[WebSocket] Incoming call from:', initiator?.username || initiator?.email || 'Unknown');
 
+    // Play incoming call ringtone
+    soundService.playCallSound();
+
     // Invalidate active calls
     queryClient.invalidateQueries({ queryKey: queryKeys.calls.active });
 
@@ -179,11 +213,19 @@ export function setupWebSocketEvents() {
 
   socketService.on('call:started', ({ callId }: { callId: string }) => {
     console.log('[WebSocket] Call started:', callId);
+
+    // Stop call ringtone when call is answered
+    soundService.stopCallSound();
+
     queryClient.invalidateQueries({ queryKey: queryKeys.calls.active });
   });
 
   socketService.on('call:ended', ({ callId }: { callId: string }) => {
     console.log('[WebSocket] Call ended:', callId);
+
+    // Stop call ringtone when call ends
+    soundService.stopCallSound();
+
     queryClient.invalidateQueries({ queryKey: queryKeys.calls.active });
     queryClient.invalidateQueries({ queryKey: queryKeys.calls.history() });
   });
@@ -225,6 +267,18 @@ export function setupWebSocketEvents() {
   socketService.on('story:viewed', ({ storyId }: { storyId: string }) => {
     console.log('[WebSocket] Story viewed:', storyId);
     queryClient.invalidateQueries({ queryKey: queryKeys.stories.views(storyId) });
+  });
+
+  socketService.on('story:reply', ({ storyId, reply }: { storyId: string; reply: any }) => {
+    console.log('[WebSocket] New story reply received for story:', storyId);
+    console.log('[WebSocket] Reply from:', reply?.sender?.username || 'Unknown');
+
+    // Invalidate story replies query to fetch the new reply
+    queryClient.invalidateQueries({ queryKey: queryKeys.stories.replies(storyId) });
+
+    // Also invalidate story details to update reply count
+    queryClient.invalidateQueries({ queryKey: queryKeys.stories.detail(storyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.stories.mine });
   });
 
   // ============================================================================
@@ -276,6 +330,7 @@ export function cleanupWebSocketEvents() {
     'channel:updated',
     'story:new',
     'story:viewed',
+    'story:reply',
     'error',
     'maintenance',
   ];

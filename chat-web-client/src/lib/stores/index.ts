@@ -58,6 +58,13 @@ export {
   useCallActions,
 } from './call.store';
 
+// Unread Store
+export {
+  useUnreadStore,
+  useConversationUnread,
+  useTotalUnread,
+} from './unread.store';
+
 // Re-export types
 export type { ViewType } from './ui.store';
 export type { CallType, CallStatus, CallParticipant, ActiveCall, IncomingCall } from './call.store';

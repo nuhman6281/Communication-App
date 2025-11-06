@@ -79,3 +79,8 @@ export enum PlanName {
   BUSINESS = 'business',
   ENTERPRISE = 'enterprise',
 }
+
+// Story Configuration
+export const STORY_EXPIRATION_HOURS = 24; // Stories expire after 24 hours
+export const MAX_STORY_FILE_SIZE_MB = 100; // Max file size for story uploads
+export const MAX_STORY_DURATION_SECONDS = 60; // Max video duration for stories

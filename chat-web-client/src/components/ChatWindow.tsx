@@ -18,7 +18,7 @@ import {
   Users,
 } from "lucide-react";
 import { useMessages, useSendMessage, useConversation, useAddReaction, useRemoveReaction, useUpdateMessage, useDeleteMessage, usePinMessage, useUnpinMessage, useBlockUser } from "@/hooks";
-import { useAuthStore, useActiveCall } from "@/lib/stores";
+import { useAuthStore, useActiveCall, useUnreadStore } from "@/lib/stores";
 import { useTypingUsers } from "@/lib/stores/presence.store";
 import { socketService } from "@/lib/websocket";
 import { webrtcService } from "@/lib/webrtc/webrtc.service";
@@ -192,13 +192,36 @@ export function ChatWindow({
 
   // Join conversation room on mount for real-time message updates
   useEffect(() => {
-    if (conversationId && socketService.isConnected()) {
-      console.log('[ChatWindow] Joining conversation:', conversationId);
-      socketService.joinConversation(conversationId);
-    }
+    if (!conversationId) return;
+
+    // Reset unread count for this conversation
+    useUnreadStore.getState().resetUnread(conversationId);
+
+    // Function to join conversation
+    const joinRoom = () => {
+      if (socketService.isConnected()) {
+        console.log('[ChatWindow] Joining conversation:', conversationId);
+        socketService.joinConversation(conversationId);
+      } else {
+        console.warn('[ChatWindow] Cannot join conversation - socket not connected');
+      }
+    };
+
+    // Join immediately if already connected
+    joinRoom();
+
+    // Also rejoin on socket reconnection
+    const handleReconnect = () => {
+      console.log('[ChatWindow] Socket reconnected, rejoining conversation:', conversationId);
+      joinRoom();
+    };
+
+    socketService.on('connect', handleReconnect);
 
     return () => {
-      if (conversationId && socketService.isConnected()) {
+      socketService.off('connect', handleReconnect);
+
+      if (socketService.isConnected()) {
         console.log('[ChatWindow] Leaving conversation:', conversationId);
         socketService.leaveConversation(conversationId);
       }

@@ -18,6 +18,9 @@ import { GetStoriesDto } from './dto/get-stories.dto';
 import { CreateStoryReplyDto } from './dto/create-story-reply.dto';
 import { StoriesGateway } from './stories/stories.gateway';
 import { NotificationsService } from '@modules/notifications/notifications.service';
+import { ConversationsService } from '@modules/conversations/conversations.service';
+import { MessagesService } from '@modules/messages/messages.service';
+import { ConversationType, MessageType, STORY_EXPIRATION_HOURS } from '@common/constants';
 
 @Injectable()
 export class StoriesService {
@@ -32,6 +35,10 @@ export class StoriesService {
     private readonly storiesGateway: StoriesGateway,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
+    @Inject(forwardRef(() => ConversationsService))
+    private readonly conversationsService: ConversationsService,
+    @Inject(forwardRef(() => MessagesService))
+    private readonly messagesService: MessagesService,
   ) {}
 
   /**
@@ -41,9 +48,9 @@ export class StoriesService {
     userId: string,
     createStoryDto: CreateStoryDto,
   ): Promise<Story> {
-    // Calculate expiration time (24 hours from now)
+    // Calculate expiration time using constant
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24);
+    expiresAt.setHours(expiresAt.getHours() + STORY_EXPIRATION_HOURS);
 
     const story = this.storyRepository.create({
       userId,
@@ -110,7 +117,7 @@ export class StoriesService {
             new Brackets((customQb) => {
               customQb
                 .where('story.privacy = :customPrivacy', { customPrivacy: 'custom' })
-                .andWhere(':currentUserId = ANY(story.customViewers)', { currentUserId });
+                .andWhere(':currentUserId::text = ANY(story.customViewers)', { currentUserId });
             }),
           )
           .orWhere('story.privacy = :friendsPrivacy', { friendsPrivacy: 'friends' });
@@ -121,7 +128,7 @@ export class StoriesService {
     query.andWhere(
       new Brackets((qb) => {
         qb.where('story.blockedViewers IS NULL')
-          .orWhere('NOT(:currentUserId = ANY(story.blockedViewers))', { currentUserId });
+          .orWhere('NOT(:currentUserId::text = ANY(story.blockedViewers))', { currentUserId });
       }),
     );
 
@@ -133,6 +140,70 @@ export class StoriesService {
     const [stories, total] = await query.getManyAndCount();
 
     return { stories, total };
+  }
+
+  /**
+   * Get active stories grouped by user (for feed view)
+   */
+  async getActiveStoriesGrouped(currentUserId: string): Promise<Array<{
+    userId: string;
+    username: string;
+    avatarUrl: string | null;
+    stories: Story[];
+    latestStoryAt: string;
+    unseenCount: number;
+  }>> {
+    // Get all active stories
+    const { stories } = await this.getStories(currentUserId, { activeOnly: true, limit: 1000 });
+
+    // Group stories by user
+    const storyGroups = new Map<string, {
+      userId: string;
+      username: string;
+      avatarUrl: string | null;
+      stories: Story[];
+      latestStoryAt: Date;
+      unseenCount: number;
+    }>();
+
+    for (const story of stories) {
+      const userId = story.userId;
+
+      if (!storyGroups.has(userId)) {
+        storyGroups.set(userId, {
+          userId,
+          username: story.user?.username || 'Unknown',
+          avatarUrl: story.user?.avatarUrl || null,
+          stories: [],
+          latestStoryAt: story.createdAt,
+          unseenCount: 0,
+        });
+      }
+
+      const group = storyGroups.get(userId)!;
+      group.stories.push(story);
+
+      // Update latest story timestamp
+      if (story.createdAt > group.latestStoryAt) {
+        group.latestStoryAt = story.createdAt;
+      }
+
+      // Count unseen stories (stories not viewed by current user)
+      const hasViewed = story.views?.some(view => view.viewerId === currentUserId);
+      if (!hasViewed) {
+        group.unseenCount++;
+      }
+    }
+
+    // Convert map to array and sort by latest story
+    const result = Array.from(storyGroups.values())
+      .map(group => ({
+        ...group,
+        latestStoryAt: group.latestStoryAt.toISOString(),
+      }))
+      .sort((a, b) => new Date(b.latestStoryAt).getTime() - new Date(a.latestStoryAt).getTime());
+
+    return result;
   }
 
   /**
@@ -395,7 +466,7 @@ export class StoriesService {
   }
 
   /**
-   * Reply to a story
+   * Reply to a story (Instagram approach - sends as DM)
    */
   async replyToStory(
     storyId: string,
@@ -405,6 +476,7 @@ export class StoriesService {
     // Verify the story exists and user has access
     const story = await this.getStory(storyId, senderId);
 
+    // Create StoryReply entity for story viewer
     const reply = this.storyReplyRepository.create({
       storyId,
       senderId,
@@ -421,6 +493,39 @@ export class StoriesService {
       where: { id: savedReply.id },
       relations: ['sender'],
     });
+
+    // ==========================================
+    // Instagram Approach: Create DM Conversation
+    // ==========================================
+
+    try {
+      // Find or create direct conversation between story owner and replier
+      const conversation = await this.conversationsService.createConversation(
+        senderId,
+        {
+          type: ConversationType.DIRECT,
+          participantIds: [story.userId],
+        },
+      );
+
+      // Send the reply as a message in the conversation with story context
+      await this.messagesService.sendMessage(senderId, {
+        conversationId: conversation.id,
+        content: createStoryReplyDto.content,
+        messageType: MessageType.TEXT,
+        metadata: {
+          storyReply: true,
+          storyId: story.id,
+          storyType: story.type,
+          storyMediaUrl: story.mediaUrl,
+          storyContent: story.content,
+        },
+      });
+    } catch (error) {
+      // Log error but don't fail the story reply
+      // The StoryReply entity was already saved
+      console.error('Failed to create DM for story reply:', error);
+    }
 
     // Emit real-time event for new reply
     this.storiesGateway.sendNewStoryReply(story.userId, storyId, fullReply!);

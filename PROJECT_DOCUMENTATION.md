@@ -104,7 +104,7 @@ chat-backend/
 │   │
 │   ├── common/
 │   │   ├── constants/
-│   │   │   └── index.ts - Application-wide constants (roles, status values, pagination limits)
+│   │   │   └── index.ts - Application-wide constants (message types, conversation types, user roles, presence status, call status, story expiration, file size limits)
 │   │   │
 │   │   ├── decorators/
 │   │   │   ├── current-user.decorator.ts - @CurrentUser() decorator, extracts user from JWT request
@@ -398,12 +398,14 @@ chat-web-client/
 │   │   ├── AuthScreen.tsx - Login/register UI, email/password forms, OAuth buttons (Google/GitHub/Microsoft), forgot password link
 │   │   ├── EmailVerification.tsx - Email verification page, token extraction from URL params, verification API call
 │   │   ├── ChatInterface.tsx - Main app shell, view router (chat/profile/settings/stories/workspace), conversation selection, notification panel toggle, responsive layout manager
-│   │   ├── Sidebar.tsx - Left navigation bar, workspace selector, search button (Cmd+K), notifications badge, call history, navigation icons, user avatar with status
-│   │   ├── ConversationList.tsx - Conversation list panel, search filter, type tabs (All/Direct/Groups/Channels), conversation items with avatars/names/last message/unread badges/timestamps
-│   │   ├── ChatWindow.tsx - Main chat view, message display area, header with call buttons (audio/video), typing indicators, scroll to bottom, message input composer
+│   │   ├── Sidebar.tsx - Left navigation bar with real-time unread badge, sound toggle, workspace selector, search button (Cmd+K), notifications badge, sound mute/unmute button, navigation icons, user avatar with status
+│   │   ├── ConversationList.tsx - Conversation list panel with real-time per-conversation unread badges, search filter, type tabs (All/Direct/Groups/Channels), conversation items with avatars/names/last message/timestamps, ConversationUnreadBadge sub-component
+│   │   ├── ChatWindow.tsx - Main chat view with unread reset on open, message display area, header with call buttons (audio/video), typing indicators, scroll to bottom, message input composer
 │   │   ├── MessageComposer.tsx - Message input with auto-grow, markdown formatting, emoji picker, file/image/video attachments, AI text enhancement (premium), tone adjustment (professional/casual/formal/friendly/concise), send on Enter
-│   │   ├── MessageBubble.tsx - Individual message rendering, sender info, timestamp, read status, reactions display, reply/forward/edit/delete context menu, reply threading
+│   │   ├── MessageBubble.tsx - Individual message rendering with story reply detection, sender info, timestamp, read status, reactions display, reply/forward/edit/delete context menu, reply threading
 │   │   ├── MessageContentRenderer.tsx - Message content parser, markdown rendering, code syntax highlighting, link previews, file attachments display, embedded media
+│   │   ├── StoryReplyMessage.tsx - Story reply message component with story thumbnail preview (image/video/text gradient), "Replied to your story" label
+│   │   ├── SoundToggle.tsx - Sound mute/unmute toggle button with icon and button variants, tooltip support
 │   │   │
 │   │   ├── GlobalCallContainer.tsx - Global call state manager with React portal rendering, minimized call indicator (draggable), persistent across navigation
 │   │   ├── VideoCallOverlay.tsx - Draggable call window with video grid, avatar display for audio calls, screen sharing support, call controls (mute/video/screen share/end), duration timer
@@ -659,6 +661,7 @@ realtime-service/
 - `presence.store.ts` - User online status, typing indicators, setTyping(), clearTyping()
 - `workspace.store.ts` - Current workspace, channels, members, permissions
 - `ui.store.ts` - Theme, sidebar state, notifications panel toggle, modal states
+- `unread.store.ts` - Real-time unread message tracking with localStorage persistence, incrementUnread(), resetUnread(), setUnreadCount(), useConversationUnread(), useTotalUnread() hooks
 
 ### WebSocket Services
 
@@ -666,8 +669,14 @@ realtime-service/
 
 - `socket.ts` - Messaging WebSocket (port 3001), connect(), emit(), on(), intentionalDisconnect flag
 - `realtime-socket.ts` - WebRTC signaling WebSocket (port 4000), connection management, auto-reconnect
-- `events.ts` - Socket event handlers setup, message:new, typing:start/stop, user:online/offline
+- `events.ts` - Socket event handlers with sound and unread tracking, message:new checks sender (no notification for self-sent messages) and viewing status before incrementing unread count and playing notification sound, call:incoming plays ringtone, call:started/ended stops ringtone, typing:start/stop, user:online/offline
 - `index.ts` - Export barrel, setupWebSocketEvents(), cleanupWebSocketEvents()
+
+### Audio Services
+
+**lib/audio/**
+
+- `sound.service.ts` - Sound notification manager with Web Audio API fallback beeps, playMessageSound() (800Hz beep fallback), playCallSound() with looping double-beep pattern (600Hz fallback), stopCallSound(), mute()/unmute(), toggleMute(), volume controls, graceful degradation when sound files missing, handles autoplay restrictions
 
 ### WebRTC Service
 
@@ -777,7 +786,7 @@ Button, Input, Textarea, Select, Checkbox, Radio, Switch, Slider, Dialog, Sheet,
 #### Common Utilities (15 files)
 
 **src/common/constants/**
-- `index.ts` - Application-wide constants (roles, status values, limits)
+- `index.ts` - Application-wide constants (message types, conversation types, user roles, presence status, call status, story configuration with expiration hours and file size limits)
 
 **src/common/decorators/** (5 decorators)
 - `current-user.decorator.ts` - @CurrentUser() decorator extracts user from request
