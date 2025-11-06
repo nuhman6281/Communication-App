@@ -4,6 +4,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { ChatInterface } from './components/ChatInterface';
 import { EmailVerification } from './components/EmailVerification';
 import { GlobalCallContainer } from './components/GlobalCallContainer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuthStore, useUIStore } from './lib/stores';
 import { socketService, setupWebSocketEvents, cleanupWebSocketEvents } from './lib/websocket';
 import { realtimeSocket } from './lib/websocket/realtime-socket';
@@ -202,23 +203,40 @@ export default function App() {
   }, [isAuthenticated]);
 
   return (
-    <BrowserRouter>
-      {/* Global Call Container - renders at root level for persistence */}
-      {isAuthenticated && <GlobalCallContainer />}
+    <ErrorBoundary level="app" showDetails={process.env.NODE_ENV === 'development'}>
+      <BrowserRouter>
+        {/* Global Call Container - renders at root level for persistence */}
+        {isAuthenticated && (
+          <ErrorBoundary level="component" showDetails={false}>
+            <GlobalCallContainer />
+          </ErrorBoundary>
+        )}
 
-      <Routes>
-        {/* Email verification route - accessible without authentication */}
-        <Route path="/verify-email" element={<EmailVerification />} />
+        <Routes>
+          {/* Email verification route - accessible without authentication */}
+          <Route
+            path="/verify-email"
+            element={
+              <ErrorBoundary level="page">
+                <EmailVerification />
+              </ErrorBoundary>
+            }
+          />
 
-        {/* Main app routes */}
-        <Route
-          path="/"
-          element={isAuthenticated ? <ChatInterface /> : <AuthScreen onAuthenticate={() => {}} />}
-        />
+          {/* Main app routes */}
+          <Route
+            path="/"
+            element={
+              <ErrorBoundary level="page">
+                {isAuthenticated ? <ChatInterface /> : <AuthScreen onAuthenticate={() => {}} />}
+              </ErrorBoundary>
+            }
+          />
 
-        {/* Catch all - redirect to home */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+          {/* Catch all - redirect to home */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

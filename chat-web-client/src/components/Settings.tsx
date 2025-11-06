@@ -3,10 +3,12 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Slider } from './ui/slider';
-import { ArrowLeft, Bell, Moon, Globe, Lock, Database, Smartphone, Palette, LogOut, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
-import { useLogout, useNotificationPreferences, useUpdateNotificationPreferences } from '@/hooks';
+import { Badge } from './ui/badge';
+import { ArrowLeft, Bell, Moon, Globe, Lock, Database, Smartphone, Palette, LogOut, Loader2, ChevronDown, ChevronUp, BellRing, Check, X } from 'lucide-react';
+import { useLogout, useNotificationPreferences, useUpdateNotificationPreferences, usePushNotifications } from '@/hooks';
 import { useState, useEffect } from 'react';
 import { BlockedUsers } from './BlockedUsers';
+import { toast } from 'sonner';
 
 interface SettingsProps {
   onBack: () => void;
@@ -16,6 +18,17 @@ export function Settings({ onBack }: SettingsProps) {
   const { mutate: logout, isPending: isLoggingOut } = useLogout();
   const { data: preferences, isLoading: isLoadingPreferences } = useNotificationPreferences();
   const updatePreferences = useUpdateNotificationPreferences();
+
+  // Push notifications hook
+  const {
+    isSupported: isPushSupported,
+    permission: pushPermission,
+    isSubscribed: isPushSubscribed,
+    isInitializing: isPushInitializing,
+    requestPermission: requestPushPermission,
+    subscribe: subscribeToPush,
+    unsubscribe: unsubscribeFromPush,
+  } = usePushNotifications();
 
   // Local state for notification preferences
   const [notificationSettings, setNotificationSettings] = useState({
@@ -60,6 +73,45 @@ export function Settings({ onBack }: SettingsProps) {
 
     // Update backend
     await updatePreferences.mutateAsync({ [key]: value });
+  };
+
+  const handleEnablePushNotifications = async () => {
+    try {
+      if (pushPermission === 'default') {
+        // Request permission first
+        const permission = await requestPushPermission();
+        if (permission === 'granted') {
+          toast.success('Push notifications enabled successfully');
+        } else if (permission === 'denied') {
+          toast.error('Push notifications permission denied');
+        }
+      } else if (pushPermission === 'granted' && !isPushSubscribed) {
+        // Subscribe if permission already granted
+        const success = await subscribeToPush();
+        if (success) {
+          toast.success('Subscribed to push notifications');
+        } else {
+          toast.error('Failed to subscribe to push notifications');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to enable push notifications:', error);
+      toast.error('Failed to enable push notifications');
+    }
+  };
+
+  const handleDisablePushNotifications = async () => {
+    try {
+      const success = await unsubscribeFromPush();
+      if (success) {
+        toast.success('Push notifications disabled');
+      } else {
+        toast.error('Failed to disable push notifications');
+      }
+    } catch (error) {
+      console.error('Failed to disable push notifications:', error);
+      toast.error('Failed to disable push notifications');
+    }
   };
 
   return (
@@ -127,6 +179,89 @@ export function Settings({ onBack }: SettingsProps) {
             </div>
           ) : (
             <div className="space-y-4 pl-7">
+              {/* Web Push Notifications Section */}
+              <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3">
+                    <BellRing className="w-5 h-5 mt-0.5 text-blue-600" />
+                    <div>
+                      <Label htmlFor="web-push" className="text-base font-semibold">
+                        Web Push Notifications
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Get instant notifications even when the app is closed
+                      </p>
+
+                      {/* Status Badge */}
+                      {!isPushInitializing && (
+                        <div className="mt-2">
+                          {!isPushSupported ? (
+                            <Badge variant="destructive" className="gap-1">
+                              <X className="w-3 h-3" />
+                              Not Supported
+                            </Badge>
+                          ) : pushPermission === 'granted' && isPushSubscribed ? (
+                            <Badge className="bg-green-600 hover:bg-green-700 gap-1">
+                              <Check className="w-3 h-3" />
+                              Enabled
+                            </Badge>
+                          ) : pushPermission === 'denied' ? (
+                            <Badge variant="destructive" className="gap-1">
+                              <X className="w-3 h-3" />
+                              Blocked
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="gap-1">
+                              Not Enabled
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Button */}
+                {isPushSupported && (
+                  <div className="flex gap-2">
+                    {pushPermission === 'granted' && isPushSubscribed ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDisablePushNotifications}
+                        className="w-full"
+                      >
+                        Disable Push Notifications
+                      </Button>
+                    ) : pushPermission === 'denied' ? (
+                      <div className="text-sm text-muted-foreground">
+                        Push notifications are blocked. Please enable them in your browser settings.
+                      </div>
+                    ) : (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleEnablePushNotifications}
+                        className="w-full bg-blue-600 hover:bg-blue-700"
+                        disabled={isPushInitializing}
+                      >
+                        {isPushInitializing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Initializing...
+                          </>
+                        ) : (
+                          <>
+                            <BellRing className="w-4 h-4 mr-2" />
+                            Enable Push Notifications
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="push-notifications">Push Notifications</Label>

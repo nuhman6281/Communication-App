@@ -26,6 +26,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Sound Notifications** - Audio feedback for messages and calls with graceful degradation when sound files are missing. Message notification sound plays on new messages, call ringtone loops on incoming calls and stops when answered/ended
 - **Sound Mute Toggle** - Sidebar toggle button for muting/unmuting notification sounds with volume controls and persistent mute state
 - **Real-time Unread Badges** - Zustand-based unread message tracking with localStorage persistence. Sidebar shows total unread count, conversation list shows per-conversation badges, unread count resets when opening conversation, only increments when not viewing conversation
+- **🆕 Web Push Notifications** - Complete Web Push API integration with service worker, push subscriptions, background notifications, and notification action buttons. Includes UI in Settings for enabling/disabling push notifications with real-time status badges
+- **🆕 Comprehensive Error Boundaries** - Multi-level error handling with app-level, page-level, and component-level error boundaries. Provides graceful degradation with retry functionality and detailed error information in development mode
+- **🆕 Push Notification Service** - Dedicated service for managing push subscriptions, service worker lifecycle, and notification delivery with VAPID authentication
+- **🆕 Push Notifications Hook** - React hook (`usePushNotifications`) for easy push notification management in components with subscription status, permission handling, and notification display
+- **🆕 Service Worker** - Background worker for handling push notifications, offline support, message caching, and background sync with IndexedDB integration
+- **🆕 TESTING_GUIDE.md** - Comprehensive testing documentation covering all features, setup instructions, manual testing procedures, and debugging tips
 
 ### Fixed
 - **Critical: Unread badge increments for self-sent messages** - Fixed WebSocket `message:new` handler to check if sender is current user before incrementing unread count and playing sound. Self-sent messages no longer trigger notifications
